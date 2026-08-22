@@ -78,9 +78,9 @@
   "credentials": {
     "gmailAccount": {
       "email": "antyhacker75@gmail.com",
-      "clientId": "737915603369-i696cd0s28ntofqhdua1l73qfsh0ed5t.apps.googleusercontent.com",
-      "clientSecret": "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",
-      "refreshToken": "4/0ATsMZqDdBHWfsqKTcL6t15tWMFv7__t_KTyIUiHTYLmX_UmTMKwR1BI98nzg5-aW_PgpGw",
+      "clientId": "737915603369-6nso5m2i6sggp37psi0pl3b46o23akkv.apps.googleusercontent.com",
+      "clientSecret": "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",
+      "refreshToken": "1//04-aW77szCTqLCgYIARAAGAQSNwF-L9Irh4up1BsuEOmWxo0XfWcsl_amddylCrXklknYAxu54rbZxzoFKDnOodKthG3Zz9OhL_Y",
       "apiKey": ""
     },
     "gRecaptcha": {
