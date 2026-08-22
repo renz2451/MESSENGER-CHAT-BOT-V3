@@ -25,19 +25,19 @@
     "ignoreCommand": []
   },
   "adminBot": [
-    "100073299970612"
+    "61593252647752"
   ],
   "developer": [
-    "100073299970612"
+    "61593252647752"
   ],
   "vipuser": [
-    "61592084390757"
+    "100073299970612"
   ],
   "premium": [
-    "61592084390757"
+    "100073299970612"
   ],
   "creator": [
-    "100073299970612"
+    "61593252647752"
   ],
   "reactBy": {
     "delete": [
@@ -78,9 +78,9 @@
   "credentials": {
     "gmailAccount": {
       "email": "antyhacker75@gmail.com",
-      "clientId": "737915603369-6nso5m2i6sggp37psi0pl3b46o23akkv.apps.googleusercontent.com",
-      "clientSecret": "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",
-      "refreshToken": "1//04-aW77szCTqLCgYIARAAGAQSNwF-L9Irh4up1BsuEOmWxo0XfWcsl_amddylCrXklknYAxu54rbZxzoFKDnOodKthG3Zz9OhL_Y",
+      "clientId": "737915603369-p6r0u5l7qvmrl17uqk2af787b21khig0.apps.googleusercontent.com",
+      "clientSecret": "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",
+      "refreshToken": "1//04QOWCLHoL30qCgYIARAAGAQSNwF-L9IrsOtzJtiiyW3nz_7U3cMNZjqCEDNaPYp_dTdFmqSdpmLVt1RD5VNV83jo52kvCoQ8zms",
       "apiKey": ""
     },
     "gRecaptcha": {
