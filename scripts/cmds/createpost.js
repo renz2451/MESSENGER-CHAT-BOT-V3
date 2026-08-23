@@ -1,13 +1,12 @@
 const fs = require('fs-extra');
 const path = require('path');
 const axios = require('axios');
-const FormData = require('form-data');
 const sharp = require('sharp');
 
 module.exports = {
   config: {
     name: "createpost",
-    version: "2.1.0",
+    version: "2.2.0",
     author: "Renz",
     role: 2,
     usePrefix: true,
@@ -25,7 +24,6 @@ module.exports = {
     if (!global.GoatBot) global.GoatBot = {};
     if (!global.GoatBot.onReply) global.GoatBot.onReply = new Map();
     
-    // If there are arguments, use them as the post content
     if (args && args.length > 0) {
       const content = args.join(' ');
       
@@ -133,7 +131,6 @@ module.exports = {
       return;
     }
 
-    // If no arguments, start the interactive flow
     const postData = {
       formData: {
         input: {
@@ -199,7 +196,6 @@ module.exports = {
       imageIds: []
     };
 
-    // Send the initial message
     const msg = await api.sendMessage(
       `📝 Choose who can see this post:\n\n1️⃣ Everyone\n2️⃣ Friends\n3️⃣ Only Me`,
       threadID
@@ -225,15 +221,10 @@ module.exports = {
 
     if (!Reply || event.senderID != author) return;
 
-    // Helper to compress and upload images
+    // Helper to upload images using buffer (no file writing)
     async function uploadImages(attachments) {
       const uploadedIds = [];
-      const cacheDir = path.join(__dirname, 'cache');
       
-      if (!fs.existsSync(cacheDir)) {
-        fs.mkdirSync(cacheDir, { recursive: true });
-      }
-
       console.log('Uploading images:', attachments.length);
 
       for (const attachment of attachments) {
@@ -243,13 +234,9 @@ module.exports = {
         }
         
         try {
-          const timestamp = Date.now();
-          const randomStr = Math.random().toString(36).substring(7);
-          const pathImage = path.join(cacheDir, `upload_${timestamp}_${randomStr}.jpg`);
-          const compressedPath = path.join(cacheDir, `compressed_${timestamp}_${randomStr}.jpg`);
-          
-          // Download image
           console.log('Downloading image from:', attachment.url);
+          
+          // Download image as buffer
           const response = await axios.get(attachment.url, { 
             responseType: 'arraybuffer',
             headers: {
@@ -257,116 +244,141 @@ module.exports = {
             }
           });
           
-          fs.writeFileSync(pathImage, Buffer.from(response.data));
-          console.log('Image saved to:', pathImage);
+          let imageBuffer = Buffer.from(response.data);
+          console.log(`Original size: ${(imageBuffer.length / 1024 / 1024).toFixed(2)} MB`);
           
-          // Compress image to under 4MB using sharp
-          console.log('Compressing image...');
-          await sharp(pathImage)
-            .resize(1080, null, { // Max width 1080px, maintain aspect ratio
-              withoutEnlargement: true,
-              fit: 'inside'
-            })
-            .jpeg({ quality: 80, progressive: true })
-            .toFile(compressedPath);
-          
-          const stats = fs.statSync(compressedPath);
-          console.log(`Compressed image size: ${(stats.size / 1024 / 1024).toFixed(2)} MB`);
-          
-          // If still too large, compress more
-          let finalPath = compressedPath;
-          if (stats.size > 3.5 * 1024 * 1024) {
-            console.log('Image still too large, compressing more...');
-            const moreCompressedPath = path.join(cacheDir, `compressed2_${timestamp}_${randomStr}.jpg`);
-            await sharp(pathImage)
-              .resize(800, null, {
+          // Compress image if needed (under 4MB)
+          if (imageBuffer.length > 3.5 * 1024 * 1024) {
+            console.log('Compressing image...');
+            
+            // Resize and compress using sharp with buffer input/output
+            imageBuffer = await sharp(imageBuffer)
+              .resize(1080, null, {
                 withoutEnlargement: true,
                 fit: 'inside'
               })
-              .jpeg({ quality: 70, progressive: true })
-              .toFile(moreCompressedPath);
-            finalPath = moreCompressedPath;
-            const newStats = fs.statSync(finalPath);
-            console.log(`Further compressed size: ${(newStats.size / 1024 / 1024).toFixed(2)} MB`);
+              .jpeg({ quality: 75, progressive: true })
+              .toBuffer();
+            
+            console.log(`Compressed size: ${(imageBuffer.length / 1024 / 1024).toFixed(2)} MB`);
           }
           
-          // Upload using form-data
-          const form = new FormData();
-          form.append('file', fs.createReadStream(finalPath));
-          form.append('profile_id', botID);
-          form.append('photo_source', '57');
-          form.append('av', botID);
-          
+          // Upload using correct Facebook endpoint
           console.log('Uploading image to Facebook...');
           
-          const uploadResult = await new Promise((resolve, reject) => {
-            api.httpPost(
-              `https://www.facebook.com/profile/picture/upload/?profile_id=${botID}&photo_source=57&av=${botID}`,
+          // Method 1: Try using mercury upload
+          try {
+            const form = new FormData();
+            form.append('file', imageBuffer, {
+              filename: 'image.jpg',
+              contentType: 'image/jpeg'
+            });
+            form.append('profile_id', botID);
+            form.append('photo_source', '57');
+            form.append('av', botID);
+            
+            const uploadResult = await new Promise((resolve, reject) => {
+              api.httpPost(
+                'https://www.facebook.com/messages/upload_photo.php',
+                form,
+                (err, res) => {
+                  if (err) reject(err);
+                  else resolve(res);
+                }
+              );
+            });
+            
+            let result = uploadResult;
+            if (typeof result === 'string') {
+              try {
+                result = JSON.parse(result.replace('for (;;);', ''));
+              } catch (e) {
+                console.log('Could not parse result as JSON');
+              }
+            }
+            
+            console.log('Upload result:', result);
+            
+            if (result && result.payload && result.payload.fbid) {
+              const imageId = result.payload.fbid.toString();
+              uploadedIds.push(imageId);
+              console.log('Image uploaded successfully! ID:', imageId);
+              continue;
+            }
+          } catch (err) {
+            console.log('Method 1 failed, trying method 2...', err.message);
+          }
+          
+          // Method 2: Try using photo upload endpoint
+          try {
+            const form = new FormData();
+            form.append('source', imageBuffer, {
+              filename: 'image.jpg',
+              contentType: 'image/jpeg'
+            });
+            form.append('type', '3');
+            form.append('__user', botID);
+            
+            const uploadResult = await new Promise((resolve, reject) => {
+              api.httpPost(
+                'https://www.facebook.com/ajax/mercury/upload_photo.php',
+                form,
+                (err, res) => {
+                  if (err) reject(err);
+                  else resolve(res);
+                }
+              );
+            });
+            
+            let result = uploadResult;
+            if (typeof result === 'string') {
+              try {
+                result = JSON.parse(result.replace('for (;;);', ''));
+              } catch (e) {}
+            }
+            
+            console.log('Method 2 upload result:', result);
+            
+            if (result && result.payload && result.payload.fbid) {
+              const imageId = result.payload.fbid.toString();
+              uploadedIds.push(imageId);
+              console.log('Image uploaded successfully via method 2! ID:', imageId);
+              continue;
+            }
+          } catch (err) {
+            console.log('Method 2 failed, trying method 3...', err.message);
+          }
+          
+          // Method 3: Try using graph API
+          try {
+            const form = new FormData();
+            form.append('source', imageBuffer, {
+              filename: 'image.jpg',
+              contentType: 'image/jpeg'
+            });
+            form.append('access_token', api.getAccessToken ? api.getAccessToken() : '');
+            form.append('published', 'false');
+            
+            const uploadResult = await axios.post(
+              'https://graph.facebook.com/v18.0/me/photos',
               form,
-              (err, res) => {
-                if (err) reject(err);
-                else resolve(res);
+              {
+                headers: form.getHeaders()
               }
             );
-          });
-          
-          let result = uploadResult;
-          if (typeof result === 'string') {
-            result = JSON.parse(result.replace('for (;;);', ''));
+            
+            console.log('Method 3 upload result:', uploadResult.data);
+            
+            if (uploadResult.data && uploadResult.data.id) {
+              uploadedIds.push(uploadResult.data.id);
+              console.log('Image uploaded successfully via Graph API! ID:', uploadResult.data.id);
+              continue;
+            }
+          } catch (err) {
+            console.log('Method 3 failed:', err.message);
           }
           
-          console.log('Upload result:', result);
-          
-          if (result && result.payload && result.payload.fbid) {
-            const imageId = result.payload.fbid.toString();
-            uploadedIds.push(imageId);
-            console.log('Image uploaded successfully! ID:', imageId);
-          } else if (result && result.error) {
-            console.log('Upload error:', result.errorSummary, result.errorDescription);
-            // Try alternative upload method
-            console.log('Trying alternative upload method...');
-            try {
-              const altForm = new FormData();
-              altForm.append('source', fs.createReadStream(finalPath));
-              altForm.append('type', '3');
-              altForm.append('__user', botID);
-              
-              const altResult = await new Promise((resolve, reject) => {
-                api.httpPost(
-                  'https://www.facebook.com/ajax/mercury/upload_photo.php',
-                  altForm,
-                  (err, res) => {
-                    if (err) reject(err);
-                    else resolve(res);
-                  }
-                );
-              });
-              
-              let altData = altResult;
-              if (typeof altData === 'string') {
-                altData = JSON.parse(altData.replace('for (;;);', ''));
-              }
-              
-              console.log('Alternative upload result:', altData);
-              
-              if (altData && altData.payload && altData.payload.fbid) {
-                const imageId = altData.payload.fbid.toString();
-                uploadedIds.push(imageId);
-                console.log('Image uploaded via alternative method! ID:', imageId);
-              }
-            } catch (altErr) {
-              console.error('Alternative upload failed:', altErr.message);
-            }
-          }
-          
-          // Cleanup
-          try { 
-            fs.unlinkSync(pathImage); 
-            fs.unlinkSync(compressedPath);
-            if (fs.existsSync(finalPath) && finalPath !== compressedPath) {
-              fs.unlinkSync(finalPath);
-            }
-          } catch(e) {}
+          console.log('All upload methods failed for this image');
           
         } catch (err) {
           console.error('Upload error for image:', err.message);
@@ -520,18 +532,6 @@ module.exports = {
             const urlPost = info.data?.story_create?.story?.url;
             
             if (!postID) throw info.errors || new Error('Failed to create post');
-            
-            try {
-              const cacheDir = path.join(__dirname, 'cache');
-              if (fs.existsSync(cacheDir)) {
-                const files = fs.readdirSync(cacheDir);
-                for (const file of files) {
-                  if (file.includes('upload_') || file.includes('compressed_')) {
-                    fs.unlinkSync(path.join(cacheDir, file));
-                  }
-                }
-              }
-            } catch(cleanupErr) {}
             
             api.unsendMessage(creatingMsg.messageID);
             
