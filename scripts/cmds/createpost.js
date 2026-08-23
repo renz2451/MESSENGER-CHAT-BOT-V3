@@ -89,27 +89,38 @@ module.exports = {
       imageIds: []
     };
 
-    // Start the interactive flow
+    // Send the initial message
     const msg = await api.sendMessage(
       `📝 Choose who can see this post:\n\n1️⃣ Everyone\n2️⃣ Friends\n3️⃣ Only Me`,
       threadID
     );
 
-    global.client.handleReply.push({
+    // Store the reply handler - using onReply structure
+    if (!global.client.onReply) global.client.onReply = new Map();
+    global.client.onReply.set(msg.messageID, {
       name: this.config.name,
-      messageID: msg.messageID,
       author: senderID,
       postData: postData,
       type: "chooseAudience"
     });
+
+    return;
   },
 
   onReply: async function ({ event, api, handleReply }) {
+    console.log('onReply triggered!', event.body);
+    
     const { type, author, postData } = handleReply;
     const { threadID, messageID, senderID, attachments, body } = event;
     const botID = api.getCurrentUserID();
 
-    if (event.senderID != author) return;
+    // Check if the reply is from the correct user
+    if (event.senderID != author) {
+      console.log('Not the author');
+      return;
+    }
+
+    console.log('Processing type:', type);
 
     // Helper function to upload images
     async function uploadImages(attachments) {
@@ -142,7 +153,6 @@ module.exports = {
             uploadedIds.push(result.payload.fbid.toString());
           }
           
-          // Cleanup
           try { fs.unlinkSync(pathImage); } catch(e) {}
         } catch (err) {
           console.error('Upload error:', err);
@@ -185,6 +195,10 @@ module.exports = {
       postData.audience = privacyMap[body.trim()];
       postData.formData.input.audience.privacy.base_state = postData.audience;
       
+      // Remove the old handler
+      global.client.onReply.delete(handleReply.messageID);
+      
+      // Unsend the previous message
       await api.unsendMessage(handleReply.messageID);
       
       const msg = await api.sendMessage(
@@ -192,20 +206,20 @@ module.exports = {
         threadID
       );
       
-      global.client.handleReply.push({
+      global.client.onReply.set(msg.messageID, {
         name: this.config.name,
-        messageID: msg.messageID,
         author: senderID,
         postData: postData,
         type: "enterCaption"
       });
     }
     else if (type === "enterCaption") {
-      if (body.trim().toLowerCase() !== "skip") {
+      if (body.trim().toLowerCase() !== "skip" && body.trim() !== "") {
         postData.caption = body;
         postData.formData.input.message.text = body;
       }
       
+      global.client.onReply.delete(handleReply.messageID);
       await api.unsendMessage(handleReply.messageID);
       
       const msg = await api.sendMessage(
@@ -213,9 +227,8 @@ module.exports = {
         threadID
       );
       
-      global.client.handleReply.push({
+      global.client.onReply.set(msg.messageID, {
         name: this.config.name,
-        messageID: msg.messageID,
         author: senderID,
         postData: postData,
         type: "attachImages"
@@ -234,14 +247,14 @@ module.exports = {
         }
       }
       
+      global.client.onReply.delete(handleReply.messageID);
       await api.unsendMessage(handleReply.messageID);
       
       const overview = showOverview(postData);
       const msg = await api.sendMessage(overview, threadID);
       
-      global.client.handleReply.push({
+      global.client.onReply.set(msg.messageID, {
         name: this.config.name,
-        messageID: msg.messageID,
         author: senderID,
         postData: postData,
         type: "overview"
@@ -252,6 +265,7 @@ module.exports = {
       
       if (choice === "1") {
         // Edit
+        global.client.onReply.delete(handleReply.messageID);
         await api.unsendMessage(handleReply.messageID);
         
         const msg = await api.sendMessage(
@@ -259,9 +273,8 @@ module.exports = {
           threadID
         );
         
-        global.client.handleReply.push({
+        global.client.onReply.set(msg.messageID, {
           name: this.config.name,
-          messageID: msg.messageID,
           author: senderID,
           postData: postData,
           type: "editChoice"
@@ -269,6 +282,7 @@ module.exports = {
       }
       else if (choice === "2") {
         // Confirm - Create the post
+        global.client.onReply.delete(handleReply.messageID);
         await api.unsendMessage(handleReply.messageID);
         
         const creatingMsg = await api.sendMessage('⏳ Creating your post...', threadID);
@@ -308,24 +322,23 @@ module.exports = {
               `🖼️ Images: ${postData.imageIds.length > 0 ? postData.imageIds.length + " image(s)" : "None"}\n\n` +
               `📌 Post ID: ${postID}\n` +
               `🔗 Link: ${urlPost}`,
-              threadID,
-              messageID
+              threadID
             );
           } catch (err) {
             console.error('Post creation error:', err);
             api.unsendMessage(creatingMsg.messageID);
             return api.sendMessage(
               `❌ Failed to create post. Error: ${err.message || 'Unknown error'}`,
-              threadID,
-              messageID
+              threadID
             );
           }
         });
       }
       else if (choice === "3") {
         // Cancel
+        global.client.onReply.delete(handleReply.messageID);
         await api.unsendMessage(handleReply.messageID);
-        return api.sendMessage('❌ Post creation cancelled.', threadID, messageID);
+        return api.sendMessage('❌ Post creation cancelled.', threadID);
       }
       else {
         return api.sendMessage('❌ Invalid choice. Please choose 1, 2, or 3', threadID, messageID);
@@ -336,6 +349,7 @@ module.exports = {
       
       if (choice === "1") {
         // Edit Audience
+        global.client.onReply.delete(handleReply.messageID);
         await api.unsendMessage(handleReply.messageID);
         
         const msg = await api.sendMessage(
@@ -343,9 +357,8 @@ module.exports = {
           threadID
         );
         
-        global.client.handleReply.push({
+        global.client.onReply.set(msg.messageID, {
           name: this.config.name,
-          messageID: msg.messageID,
           author: senderID,
           postData: postData,
           type: "editAudience"
@@ -353,6 +366,7 @@ module.exports = {
       }
       else if (choice === "2") {
         // Edit Caption
+        global.client.onReply.delete(handleReply.messageID);
         await api.unsendMessage(handleReply.messageID);
         
         const msg = await api.sendMessage(
@@ -360,9 +374,8 @@ module.exports = {
           threadID
         );
         
-        global.client.handleReply.push({
+        global.client.onReply.set(msg.messageID, {
           name: this.config.name,
-          messageID: msg.messageID,
           author: senderID,
           postData: postData,
           type: "editCaption"
@@ -370,6 +383,7 @@ module.exports = {
       }
       else if (choice === "3") {
         // Edit Attached File
+        global.client.onReply.delete(handleReply.messageID);
         await api.unsendMessage(handleReply.messageID);
         
         // Clear existing images
@@ -381,9 +395,8 @@ module.exports = {
           threadID
         );
         
-        global.client.handleReply.push({
+        global.client.onReply.set(msg.messageID, {
           name: this.config.name,
-          messageID: msg.messageID,
           author: senderID,
           postData: postData,
           type: "editImages"
@@ -407,15 +420,14 @@ module.exports = {
       postData.audience = privacyMap[body.trim()];
       postData.formData.input.audience.privacy.base_state = postData.audience;
       
+      global.client.onReply.delete(handleReply.messageID);
       await api.unsendMessage(handleReply.messageID);
       
-      // Show updated overview
       const overview = showOverview(postData);
       const msg = await api.sendMessage(overview, threadID);
       
-      global.client.handleReply.push({
+      global.client.onReply.set(msg.messageID, {
         name: this.config.name,
-        messageID: msg.messageID,
         author: senderID,
         postData: postData,
         type: "overview"
@@ -427,14 +439,14 @@ module.exports = {
         postData.formData.input.message.text = body;
       }
       
+      global.client.onReply.delete(handleReply.messageID);
       await api.unsendMessage(handleReply.messageID);
       
       const overview = showOverview(postData);
       const msg = await api.sendMessage(overview, threadID);
       
-      global.client.handleReply.push({
+      global.client.onReply.set(msg.messageID, {
         name: this.config.name,
-        messageID: msg.messageID,
         author: senderID,
         postData: postData,
         type: "overview"
@@ -453,14 +465,14 @@ module.exports = {
         }
       }
       
+      global.client.onReply.delete(handleReply.messageID);
       await api.unsendMessage(handleReply.messageID);
       
       const overview = showOverview(postData);
       const msg = await api.sendMessage(overview, threadID);
       
-      global.client.handleReply.push({
+      global.client.onReply.set(msg.messageID, {
         name: this.config.name,
-        messageID: msg.messageID,
         author: senderID,
         postData: postData,
         type: "overview"
