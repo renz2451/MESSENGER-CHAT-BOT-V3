@@ -6,12 +6,13 @@ module.exports = {
     name: "createpost",
     version: "1.0.0",
     author: "Renz",
-    role: 2, // Admin only
+    role: 2,
     usePrefix: true,
     description: "Create a new post on your Facebook timeline",
     guide: "{pn}",
     category: "operator",
-    cooldowns: 5
+    cooldowns: 5,
+    aliases: ["bot_post"]  // Users can use either "post" or "createpost"
   },
 
   onStart: async function ({ api, event, args, message }) {
@@ -174,7 +175,6 @@ module.exports = {
         const cacheDir = path.join(__dirname, 'cache');
         const pathImage = path.join(cacheDir, 'imagePost.png');
         
-        // Ensure cache directory exists
         if (!fs.existsSync(cacheDir)) {
           fs.mkdirSync(cacheDir, { recursive: true });
         }
@@ -244,7 +244,7 @@ module.exports = {
         } catch (err) {
           console.error('Post creation error:', err);
           return api.sendMessage(
-            `❌ Failed to create post. Please try again later.`,
+            `❌ Failed to create post. Please try again later.\nError: ${err.message || 'Unknown error'}`,
             threadID,
             messageID
           );
