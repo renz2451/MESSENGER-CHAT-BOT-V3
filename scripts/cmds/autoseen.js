@@ -5,7 +5,7 @@ module.exports = {
   config: {
     name: "autoseen",
     version: "1.0.0",
-    author: "ryuko",
+    author: "Renz",
     role: 2, // 2 = Admin
     usePrefix: true,
     description: "Turn on/off automatically seen when new messages are available",
@@ -66,7 +66,8 @@ module.exports = {
       
       const isEnable = fs.readFileSync(pathFile, 'utf-8');
       if (isEnable === 'true') {
-        await api.markAsReadAll(() => {});
+        // Use the markAsRead function with current timestamp
+        await api.markAsRead(Date.now());
       }
     } 
     catch (error) {
