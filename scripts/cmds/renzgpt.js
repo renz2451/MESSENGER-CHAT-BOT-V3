@@ -9,7 +9,7 @@ module.exports = {
     version: "1.0.0",
     author: "Renz",
     role: 0,
-    usePrefix: true, // Set to false to allow command without prefix
+    usePrefix: true,
     shortDescription: {
       en: "AI chat with multiple models"
     },
@@ -81,7 +81,7 @@ module.exports = {
 
     // Send initial progress message with loading bar
     const loadingMsg = await api.sendMessage(
-      `╭───〔 🤖 𝗥𝗘𝗡𝗭𝗚𝗣𝗧 〕───╮\n│\n│ ░░░░░░░░░░ 0%\n│\n╰─────────────────────`,
+      `╭───〔 🤖 𝗥𝗘𝗡𝗭𝗚𝗣𝗧 〕───╮\n│\n│ ⏳ Initializing...\n│ ░░░░░░░░░░ 0%\n│\n╰─────────────────────`,
       threadID
     );
 
@@ -202,10 +202,14 @@ module.exports = {
         return boldMap[char] || char;
       }).join('');
 
-      // Final formatted reply
-      const finalReply = `╭───〔 🤖 𝗥𝗲𝗻𝘇𝗚𝗣𝗧 (${boldModel}) 〕───╮\n│\n${reply.split('\n').map(line => `│ ${line}`).join('\n')}\n│\n╰─────────────────────`;
+      // Split reply into lines and format
+      const replyLines = reply.split('\n');
+      const formattedReplyLines = replyLines.map(line => `│ ${line}`).join('\n');
 
-      // Update progress: Stage 4 - Complete
+      // Final formatted reply - This is what replaces the progress message
+      const finalReply = `╭───〔 🤖 𝗥𝗲𝗻𝘇𝗚𝗣𝗧 (${boldModel}) 〕───╮\n│\n${formattedReplyLines}\n│\n╰─────────────────────`;
+
+      // Update progress: Stage 4 - Complete (show 100%)
       await updateProgress(4);
 
       // React with checkmark
@@ -214,9 +218,9 @@ module.exports = {
       // Small delay before final response
       await new Promise(resolve => setTimeout(resolve, 300));
 
-      // Edit the progress message to show the final response
+      // Check if response is too long
       if (finalReply.length > 2000) {
-        // If too long, split and send as separate messages
+        // If too long, send as separate messages
         await api.editMessage(
           `╭───〔 ✅ 𝗥𝗘𝗦𝗣𝗢𝗡𝗦𝗘 𝗥𝗘𝗔𝗗𝗬 〕───╮\n│\n│ Response is too long, splitting...\n│\n╰─────────────────────`,
           loadingMsg.messageID
@@ -227,6 +231,7 @@ module.exports = {
           await message.reply(chunk);
         }
       } else {
+        // EDIT THE PROGRESS MESSAGE TO SHOW THE AI RESPONSE
         await api.editMessage(
           finalReply,
           loadingMsg.messageID,
@@ -238,18 +243,18 @@ module.exports = {
       console.error('RenzGPT Error:', error);
       api.setMessageReaction("❌", messageID, () => {}, true);
       
-      let errorMessage = '❌ An error occurred while processing your request.';
+      let errorMessage = 'An error occurred while processing your request.';
       
       if (error.response) {
         if (error.response.status === 401) {
-          errorMessage = '❌ Invalid API key. Please check your OpenRouter API key.';
+          errorMessage = 'Invalid API key. Please check your OpenRouter API key.';
         } else if (error.response.status === 429) {
-          errorMessage = '❌ Rate limit exceeded. Please try again later.';
+          errorMessage = 'Rate limit exceeded. Please try again later.';
         } else if (error.response.data?.error?.message) {
-          errorMessage = `❌ ${error.response.data.error.message}`;
+          errorMessage = error.response.data.error.message;
         }
       } else if (error.code === 'ECONNABORTED') {
-        errorMessage = '❌ Request timed out. Please try again.';
+        errorMessage = 'Request timed out. Please try again.';
       }
       
       await api.editMessage(
