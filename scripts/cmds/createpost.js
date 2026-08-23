@@ -2,11 +2,12 @@ const fs = require('fs-extra');
 const path = require('path');
 const axios = require('axios');
 const FormData = require('form-data');
+const sharp = require('sharp');
 
 module.exports = {
   config: {
     name: "createpost",
-    version: "2.0.0",
+    version: "2.1.0",
     author: "Renz",
     role: 2,
     usePrefix: true,
@@ -238,6 +239,51 @@ module.exports = {
       return;
     }
 
+    // Helper to compress image
+    async function compressImage(inputPath, outputPath) {
+      try {
+        const image = sharp(inputPath);
+        const metadata = await image.metadata();
+        
+        // Resize if too large (max 1920px)
+        let width = metadata.width;
+        let height = metadata.height;
+        const maxSize = 1920;
+        
+        if (width > maxSize || height > maxSize) {
+          if (width > height) {
+            height = Math.round((height / width) * maxSize);
+            width = maxSize;
+          } else {
+            width = Math.round((width / height) * maxSize);
+            height = maxSize;
+          }
+        }
+        
+        await image
+          .resize(width, height, { fit: 'inside' })
+          .jpeg({ quality: 80 })
+          .toFile(outputPath);
+          
+        // Check file size
+        const stats = await fs.stat(outputPath);
+        if (stats.size > 3.8 * 1024 * 1024) {
+          // If still too large, compress more
+          await sharp(inputPath)
+            .resize(width, height, { fit: 'inside' })
+            .jpeg({ quality: 60 })
+            .toFile(outputPath);
+        }
+        
+        return true;
+      } catch (err) {
+        console.error('Compression error:', err);
+        // If compression fails, try to just copy the file
+        await fs.copy(inputPath, outputPath);
+        return false;
+      }
+    }
+
     // Helper to upload images using the correct method
     async function uploadImages(attachments) {
       const uploadedIds = [];
@@ -260,7 +306,8 @@ module.exports = {
         }
         
         try {
-          const pathImage = path.join(cacheDir, `upload_${Date.now()}_${Math.random().toString(36).substring(7)}.png`);
+          const tempPath = path.join(cacheDir, `temp_${Date.now()}_${Math.random().toString(36).substring(7)}.jpg`);
+          const compressedPath = path.join(cacheDir, `upload_${Date.now()}_${Math.random().toString(36).substring(7)}.jpg`);
           
           // Download image
           console.log('Downloading image from:', attachment.url);
@@ -271,12 +318,22 @@ module.exports = {
             }
           });
           
-          fs.writeFileSync(pathImage, Buffer.from(response.data));
-          console.log('Image saved to:', pathImage);
+          // Save temporary file
+          fs.writeFileSync(tempPath, Buffer.from(response.data));
+          console.log('Image saved to:', tempPath);
+          
+          // Compress image
+          console.log('Compressing image...');
+          await compressImage(tempPath, compressedPath);
+          console.log('Compressed image saved to:', compressedPath);
+          
+          // Check compressed file size
+          const stats = await fs.stat(compressedPath);
+          console.log('Compressed file size:', stats.size / 1024, 'KB');
           
           // Upload using form-data
           const form = new FormData();
-          form.append('file', fs.createReadStream(pathImage));
+          form.append('file', fs.createReadStream(compressedPath));
           form.append('profile_id', botID);
           form.append('photo_source', '57');
           form.append('av', botID);
@@ -307,14 +364,21 @@ module.exports = {
             console.log('Image uploaded successfully! ID:', imageId);
           } else {
             console.log('Upload failed or no fbid in response');
+            if (result && result.errorDescription) {
+              console.log('Error description:', result.errorDescription);
+            }
           }
           
           // Cleanup
-          try { fs.unlinkSync(pathImage); } catch(e) {}
+          try { 
+            if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath); 
+          } catch(e) {}
+          try { 
+            if (fs.existsSync(compressedPath)) fs.unlinkSync(compressedPath); 
+          } catch(e) {}
           
         } catch (err) {
           console.error('Upload error for image:', err.message);
-          console.error('Full error:', err);
         }
       }
       
@@ -486,7 +550,7 @@ module.exports = {
               if (fs.existsSync(cacheDir)) {
                 const files = fs.readdirSync(cacheDir);
                 for (const file of files) {
-                  if (file.includes('upload_') || file.includes('imagePost') || file.includes('videoPost')) {
+                  if (file.includes('upload_') || file.includes('imagePost') || file.includes('videoPost') || file.includes('temp_')) {
                     fs.unlinkSync(path.join(cacheDir, file));
                   }
                 }
