@@ -5,15 +5,21 @@ const path = require('path');
 module.exports = {
   config: {
     name: "renzgpt",
+    aliases: ["rgpt", "ai"],
     version: "1.0.0",
     author: "Renz",
     role: 0,
-    usePrefix: true,
-    description: "AI chat with multiple models (DeepSeek, GPT, Gemini, etc.)",
-    guide: "{pn} -model {model} {message}\n\nAvailable models:\n• coding-hacking (deepseek/deepseek-chat)\n• coding-fast (deepseek/deepseek-v3.2)\n• minimal (openai/gpt-5.4-mini)\n• gemini (google/gemini-2.0-flash)\n• llama (meta-llama/llama-4)\n• mistral (mistralai/mistral-large)",
+    shortDescription: {
+      en: "AI chat with multiple models"
+    },
+    longDescription: {
+      en: "Chat with AI using different models: DeepSeek, GPT, Gemini, Llama, Mistral"
+    },
     category: "AI",
-    cooldowns: 3,
-    aliases: ["rgpt", "ai"]
+    guide: {
+      en: "{pn} -model [model] [message]\n\nAvailable models:\n• coding-hacking (deepseek/deepseek-chat) - Default\n• coding-fast (deepseek/deepseek-v3.2)\n• minimal (openai/gpt-5.4-mini)\n• gemini (google/gemini-2.0-flash)\n• llama (meta-llama/llama-4)\n• mistral (mistralai/mistral-large)"
+    },
+    cooldowns: 3
   },
 
   onStart: async function ({ api, event, args, message }) {
@@ -22,11 +28,11 @@ module.exports = {
     // If no arguments, show help
     if (!args || args.length === 0) {
       return message.reply(
-        `🤖 **RenzGPT AI**\n\n` +
-        `Usage: ${this.config.guide}\n\n` +
-        `**Example:**\n` +
-        `$renzgpt -model coding-hacking What is JavaScript?\n\n` +
-        `**Available Models:**\n` +
+        `🤖 𝗥𝗘𝗡𝗭𝗚𝗣𝗧 𝗔𝗜\n\n` +
+        `𝗨𝘀𝗮𝗴𝗲: ${this.config.guide.en}\n\n` +
+        `𝗘𝘅𝗮𝗺𝗽𝗹𝗲:\n` +
+        `$renzgpt -model gemini Hello!\n\n` +
+        `𝗔𝘃𝗮𝗶𝗹𝗮𝗯𝗹𝗲 𝗠𝗼𝗱𝗲𝗹𝘀:\n` +
         `• coding-hacking - DeepSeek Chat (Default)\n` +
         `• coding-fast - DeepSeek V3.2\n` +
         `• minimal - GPT-5.4 Mini\n` +
@@ -140,8 +146,21 @@ module.exports = {
         return message.reply('❌ No response received from AI.');
       }
 
-      // Format and send response
-      const formattedReply = `🤖 **RenzGPT** (${modelDisplay})\n\n${reply}`;
+      // Format with proper bold text using Unicode bold characters
+      const boldModel = modelDisplay.split('').map(char => {
+        const boldMap = {
+          'A': '𝗔', 'B': '𝗕', 'C': '𝗖', 'D': '𝗗', 'E': '𝗘', 'F': '𝗙', 'G': '𝗚', 'H': '𝗛', 'I': '𝗜',
+          'J': '𝗝', 'K': '𝗞', 'L': '𝗟', 'M': '𝗠', 'N': '𝗡', 'O': '𝗢', 'P': '𝗣', 'Q': '𝗤', 'R': '𝗥',
+          'S': '𝗦', 'T': '𝗧', 'U': '𝗨', 'V': '𝗩', 'W': '𝗪', 'X': '𝗫', 'Y': '𝗬', 'Z': '𝗭',
+          'a': '𝗮', 'b': '𝗯', 'c': '𝗰', 'd': '𝗱', 'e': '𝗲', 'f': '𝗳', 'g': '𝗴', 'h': '𝗵', 'i': '𝗶',
+          'j': '𝗷', 'k': '𝗸', 'l': '𝗹', 'm': '𝗺', 'n': '𝗻', 'o': '𝗼', 'p': '𝗽', 'q': '𝗾', 'r': '𝗿',
+          's': '𝘀', 't': '𝘁', 'u': '𝘂', 'v': '𝘃', 'w': '𝘄', 'x': '𝘅', 'y': '𝘆', 'z': '𝘇',
+          '0': '𝟬', '1': '𝟭', '2': '𝟮', '3': '𝟯', '4': '𝟰', '5': '𝟱', '6': '𝟲', '7': '𝟳', '8': '𝟴', '9': '𝟵'
+        };
+        return boldMap[char] || char;
+      }).join('');
+
+      const formattedReply = `🤖 𝗥𝗲𝗻𝘇𝗚𝗣𝗧 (${boldModel})\n\n${reply}`;
       
       // Check if response is too long (Facebook has message length limits)
       if (formattedReply.length > 2000) {
