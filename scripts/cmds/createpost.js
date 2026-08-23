@@ -1,6 +1,7 @@
 const fs = require('fs-extra');
 const path = require('path');
 const axios = require('axios');
+const FormData = require('form-data');
 
 module.exports = {
   config: {
@@ -220,6 +221,7 @@ module.exports = {
 
   onReply: async function ({ api, event, Reply, getLang }) {
     console.log('onReply triggered:', event.body);
+    console.log('Attachments:', JSON.stringify(event.attachments, null, 2));
     
     // Extract data from Reply object
     const { author, postData, type } = Reply;
@@ -245,68 +247,78 @@ module.exports = {
         fs.mkdirSync(cacheDir, { recursive: true });
       }
 
+      console.log('Uploading images:', attachments.length);
+
       for (const attachment of attachments) {
-        if (attachment.type !== "photo") continue;
+        console.log('Attachment type:', attachment.type);
+        console.log('Attachment URL:', attachment.url);
+        
+        // Check if it's a photo
+        if (attachment.type !== "photo" && !attachment.url?.includes('image')) {
+          console.log('Skipping non-photo attachment:', attachment.type);
+          continue;
+        }
         
         try {
-          const pathImage = path.join(cacheDir, `upload_${Date.now()}.png`);
+          const pathImage = path.join(cacheDir, `upload_${Date.now()}_${Math.random().toString(36).substring(7)}.png`);
           
           // Download image
-          const response = await axios.get(attachment.url, { responseType: 'arraybuffer' });
+          console.log('Downloading image from:', attachment.url);
+          const response = await axios.get(attachment.url, { 
+            responseType: 'arraybuffer',
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+          });
+          
           fs.writeFileSync(pathImage, Buffer.from(response.data));
+          console.log('Image saved to:', pathImage);
           
-          // Create form data for upload
-          const formData = new FormData();
-          formData.append('file', fs.createReadStream(pathImage));
-          formData.append('profile_id', botID);
-          formData.append('photo_source', '57');
-          formData.append('av', botID);
+          // Upload using form-data
+          const form = new FormData();
+          form.append('file', fs.createReadStream(pathImage));
+          form.append('profile_id', botID);
+          form.append('photo_source', '57');
+          form.append('av', botID);
           
-          // Use api.httpPostFormData if available, otherwise use the alternative
-          let uploadResult;
-          try {
-            // Try using httpPostFormData
-            uploadResult = await api.httpPostFormData(
+          console.log('Uploading image to Facebook...');
+          
+          const uploadResult = await new Promise((resolve, reject) => {
+            api.httpPost(
               `https://www.facebook.com/profile/picture/upload/?profile_id=${botID}&photo_source=57&av=${botID}`,
-              { file: fs.createReadStream(pathImage) }
+              form,
+              (err, res) => {
+                if (err) reject(err);
+                else resolve(res);
+              }
             );
-          } catch (err) {
-            // Alternative method using httpPost with FormData
-            const form = new FormData();
-            form.append('file', fs.createReadStream(pathImage));
-            form.append('profile_id', botID);
-            form.append('photo_source', '57');
-            form.append('av', botID);
-            
-            uploadResult = await new Promise((resolve, reject) => {
-              api.httpPost(
-                `https://www.facebook.com/profile/picture/upload/?profile_id=${botID}&photo_source=57&av=${botID}`,
-                form,
-                (err, res) => {
-                  if (err) reject(err);
-                  else resolve(res);
-                }
-              );
-            });
-          }
+          });
           
           let result = uploadResult;
           if (typeof result === 'string') {
             result = JSON.parse(result.replace('for (;;);', ''));
           }
           
+          console.log('Upload result:', result);
+          
           if (result && result.payload && result.payload.fbid) {
-            uploadedIds.push(result.payload.fbid.toString());
+            const imageId = result.payload.fbid.toString();
+            uploadedIds.push(imageId);
+            console.log('Image uploaded successfully! ID:', imageId);
+          } else {
+            console.log('Upload failed or no fbid in response');
           }
           
           // Cleanup
           try { fs.unlinkSync(pathImage); } catch(e) {}
           
         } catch (err) {
-          console.error('Upload error for image:', err);
+          console.error('Upload error for image:', err.message);
+          console.error('Full error:', err);
         }
       }
       
+      console.log('Uploaded IDs:', uploadedIds);
       return uploadedIds;
     }
 
@@ -387,16 +399,22 @@ module.exports = {
       });
     }
     else if (type == "images") {
-      // Process images if any
-      if (body.trim().toLowerCase() != "skip" && attachments && attachments.length > 0) {
-        const imageIds = await uploadImages(attachments);
-        if (imageIds.length > 0) {
-          postData.imageIds = imageIds;
-          for (const id of imageIds) {
-            postData.formData.input.attachments.push({
-              "photo": { "id": id }
-            });
+      // Check if user sent images
+      if (body.trim().toLowerCase() != "skip") {
+        // Check for attachments in the event
+        if (event.attachments && event.attachments.length > 0) {
+          console.log('Processing images...');
+          const imageIds = await uploadImages(event.attachments);
+          if (imageIds.length > 0) {
+            postData.imageIds = imageIds;
+            for (const id of imageIds) {
+              postData.formData.input.attachments.push({
+                "photo": { "id": id }
+              });
+            }
           }
+        } else {
+          console.log('No attachments found in event');
         }
       }
 
@@ -628,8 +646,8 @@ module.exports = {
       postData.imageIds = [];
       postData.formData.input.attachments = [];
       
-      if (body.trim().toLowerCase() !== "skip" && attachments && attachments.length > 0) {
-        const imageIds = await uploadImages(attachments);
+      if (body.trim().toLowerCase() !== "skip" && event.attachments && event.attachments.length > 0) {
+        const imageIds = await uploadImages(event.attachments);
         if (imageIds.length > 0) {
           postData.imageIds = imageIds;
           for (const id of imageIds) {
