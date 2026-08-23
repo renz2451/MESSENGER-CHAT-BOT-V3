@@ -22,7 +22,6 @@ module.exports = {
     const { threadID, messageID, senderID } = event;
     const uuid = getGUID();
     
-    // Initialize onReply if it doesn't exist
     if (!global.GoatBot) global.GoatBot = {};
     if (!global.GoatBot.onReply) global.GoatBot.onReply = new Map();
     
@@ -30,7 +29,6 @@ module.exports = {
     if (args && args.length > 0) {
       const content = args.join(' ');
       
-      // Create a post directly with the content
       const formData = {
         input: {
           composer_entry_point: "inline_composer",
@@ -92,7 +90,6 @@ module.exports = {
 
       const botID = api.getCurrentUserID();
       
-      // Create the post
       const form = {
         av: botID,
         fb_api_req_friendly_name: "ComposerStoryCreateMutation",
@@ -208,7 +205,6 @@ module.exports = {
       threadID
     );
 
-    // Store the reply handler in GoatBot.onReply (Map)
     if (!global.GoatBot.onReply) global.GoatBot.onReply = new Map();
     global.GoatBot.onReply.set(msg.messageID, {
       commandName: this.config.name,
@@ -222,69 +218,14 @@ module.exports = {
 
   onReply: async function ({ api, event, Reply, getLang }) {
     console.log('onReply triggered:', event.body);
-    console.log('Attachments:', JSON.stringify(event.attachments, null, 2));
     
-    // Extract data from Reply object
     const { author, postData, type } = Reply;
     const { threadID, messageID, senderID, attachments, body } = event;
     const botID = api.getCurrentUserID();
 
-    if (!Reply) {
-      console.log('No Reply found');
-      return;
-    }
+    if (!Reply || event.senderID != author) return;
 
-    if (event.senderID != author) {
-      console.log('Not the author');
-      return;
-    }
-
-    // Helper to compress image
-    async function compressImage(inputPath, outputPath) {
-      try {
-        const image = sharp(inputPath);
-        const metadata = await image.metadata();
-        
-        // Resize if too large (max 1920px)
-        let width = metadata.width;
-        let height = metadata.height;
-        const maxSize = 1920;
-        
-        if (width > maxSize || height > maxSize) {
-          if (width > height) {
-            height = Math.round((height / width) * maxSize);
-            width = maxSize;
-          } else {
-            width = Math.round((width / height) * maxSize);
-            height = maxSize;
-          }
-        }
-        
-        await image
-          .resize(width, height, { fit: 'inside' })
-          .jpeg({ quality: 80 })
-          .toFile(outputPath);
-          
-        // Check file size
-        const stats = await fs.stat(outputPath);
-        if (stats.size > 3.8 * 1024 * 1024) {
-          // If still too large, compress more
-          await sharp(inputPath)
-            .resize(width, height, { fit: 'inside' })
-            .jpeg({ quality: 60 })
-            .toFile(outputPath);
-        }
-        
-        return true;
-      } catch (err) {
-        console.error('Compression error:', err);
-        // If compression fails, try to just copy the file
-        await fs.copy(inputPath, outputPath);
-        return false;
-      }
-    }
-
-    // Helper to upload images using the correct method
+    // Helper to compress and upload images
     async function uploadImages(attachments) {
       const uploadedIds = [];
       const cacheDir = path.join(__dirname, 'cache');
@@ -296,44 +237,62 @@ module.exports = {
       console.log('Uploading images:', attachments.length);
 
       for (const attachment of attachments) {
-        console.log('Attachment type:', attachment.type);
-        console.log('Attachment URL:', attachment.url);
-        
-        // Check if it's a photo
-        if (attachment.type !== "photo" && !attachment.url?.includes('image')) {
+        if (attachment.type !== "photo") {
           console.log('Skipping non-photo attachment:', attachment.type);
           continue;
         }
         
         try {
-          const tempPath = path.join(cacheDir, `temp_${Date.now()}_${Math.random().toString(36).substring(7)}.jpg`);
-          const compressedPath = path.join(cacheDir, `upload_${Date.now()}_${Math.random().toString(36).substring(7)}.jpg`);
+          const timestamp = Date.now();
+          const randomStr = Math.random().toString(36).substring(7);
+          const pathImage = path.join(cacheDir, `upload_${timestamp}_${randomStr}.jpg`);
+          const compressedPath = path.join(cacheDir, `compressed_${timestamp}_${randomStr}.jpg`);
           
           // Download image
           console.log('Downloading image from:', attachment.url);
           const response = await axios.get(attachment.url, { 
             responseType: 'arraybuffer',
             headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             }
           });
           
-          // Save temporary file
-          fs.writeFileSync(tempPath, Buffer.from(response.data));
-          console.log('Image saved to:', tempPath);
+          fs.writeFileSync(pathImage, Buffer.from(response.data));
+          console.log('Image saved to:', pathImage);
           
-          // Compress image
+          // Compress image to under 4MB using sharp
           console.log('Compressing image...');
-          await compressImage(tempPath, compressedPath);
-          console.log('Compressed image saved to:', compressedPath);
+          await sharp(pathImage)
+            .resize(1080, null, { // Max width 1080px, maintain aspect ratio
+              withoutEnlargement: true,
+              fit: 'inside'
+            })
+            .jpeg({ quality: 80, progressive: true })
+            .toFile(compressedPath);
           
-          // Check compressed file size
-          const stats = await fs.stat(compressedPath);
-          console.log('Compressed file size:', stats.size / 1024, 'KB');
+          const stats = fs.statSync(compressedPath);
+          console.log(`Compressed image size: ${(stats.size / 1024 / 1024).toFixed(2)} MB`);
+          
+          // If still too large, compress more
+          let finalPath = compressedPath;
+          if (stats.size > 3.5 * 1024 * 1024) {
+            console.log('Image still too large, compressing more...');
+            const moreCompressedPath = path.join(cacheDir, `compressed2_${timestamp}_${randomStr}.jpg`);
+            await sharp(pathImage)
+              .resize(800, null, {
+                withoutEnlargement: true,
+                fit: 'inside'
+              })
+              .jpeg({ quality: 70, progressive: true })
+              .toFile(moreCompressedPath);
+            finalPath = moreCompressedPath;
+            const newStats = fs.statSync(finalPath);
+            console.log(`Further compressed size: ${(newStats.size / 1024 / 1024).toFixed(2)} MB`);
+          }
           
           // Upload using form-data
           const form = new FormData();
-          form.append('file', fs.createReadStream(compressedPath));
+          form.append('file', fs.createReadStream(finalPath));
           form.append('profile_id', botID);
           form.append('photo_source', '57');
           form.append('av', botID);
@@ -362,19 +321,51 @@ module.exports = {
             const imageId = result.payload.fbid.toString();
             uploadedIds.push(imageId);
             console.log('Image uploaded successfully! ID:', imageId);
-          } else {
-            console.log('Upload failed or no fbid in response');
-            if (result && result.errorDescription) {
-              console.log('Error description:', result.errorDescription);
+          } else if (result && result.error) {
+            console.log('Upload error:', result.errorSummary, result.errorDescription);
+            // Try alternative upload method
+            console.log('Trying alternative upload method...');
+            try {
+              const altForm = new FormData();
+              altForm.append('source', fs.createReadStream(finalPath));
+              altForm.append('type', '3');
+              altForm.append('__user', botID);
+              
+              const altResult = await new Promise((resolve, reject) => {
+                api.httpPost(
+                  'https://www.facebook.com/ajax/mercury/upload_photo.php',
+                  altForm,
+                  (err, res) => {
+                    if (err) reject(err);
+                    else resolve(res);
+                  }
+                );
+              });
+              
+              let altData = altResult;
+              if (typeof altData === 'string') {
+                altData = JSON.parse(altData.replace('for (;;);', ''));
+              }
+              
+              console.log('Alternative upload result:', altData);
+              
+              if (altData && altData.payload && altData.payload.fbid) {
+                const imageId = altData.payload.fbid.toString();
+                uploadedIds.push(imageId);
+                console.log('Image uploaded via alternative method! ID:', imageId);
+              }
+            } catch (altErr) {
+              console.error('Alternative upload failed:', altErr.message);
             }
           }
           
           // Cleanup
           try { 
-            if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath); 
-          } catch(e) {}
-          try { 
-            if (fs.existsSync(compressedPath)) fs.unlinkSync(compressedPath); 
+            fs.unlinkSync(pathImage); 
+            fs.unlinkSync(compressedPath);
+            if (fs.existsSync(finalPath) && finalPath !== compressedPath) {
+              fs.unlinkSync(finalPath);
+            }
           } catch(e) {}
           
         } catch (err) {
@@ -406,12 +397,10 @@ module.exports = {
     }
 
     if (type == "whoSee") {
-      // Validate the input
       if (!["1", "2", "3"].includes(body.trim())) {
         return api.sendMessage('❌ Please choose 1, 2, or 3', threadID, messageID);
       }
       
-      // Set the privacy based on user choice
       const privacyMap = {
         "1": "EVERYONE",
         "2": "FRIENDS",
@@ -421,7 +410,6 @@ module.exports = {
       postData.audience = privacyMap[body.trim()];
       postData.formData.input.audience.privacy.base_state = postData.audience;
       
-      // Unsend the previous message
       await api.unsendMessage(Reply.messageID);
       
       const msg = await api.sendMessage(
@@ -429,7 +417,6 @@ module.exports = {
         threadID
       );
 
-      // Store the next reply handler
       if (!global.GoatBot.onReply) global.GoatBot.onReply = new Map();
       global.GoatBot.onReply.set(msg.messageID, {
         commandName: this.config.name,
@@ -439,13 +426,11 @@ module.exports = {
       });
     }
     else if (type == "caption") {
-      // Save the content
       if (body.trim().toLowerCase() != "skip" && body.trim() != "") {
         postData.caption = body;
         postData.formData.input.message.text = body;
       }
       
-      // Unsend the previous message
       await api.unsendMessage(Reply.messageID);
       
       const msg = await api.sendMessage(
@@ -453,7 +438,6 @@ module.exports = {
         threadID
       );
 
-      // Store the next reply handler
       if (!global.GoatBot.onReply) global.GoatBot.onReply = new Map();
       global.GoatBot.onReply.set(msg.messageID, {
         commandName: this.config.name,
@@ -463,9 +447,7 @@ module.exports = {
       });
     }
     else if (type == "images") {
-      // Check if user sent images
       if (body.trim().toLowerCase() != "skip") {
-        // Check for attachments in the event
         if (event.attachments && event.attachments.length > 0) {
           console.log('Processing images...');
           const imageIds = await uploadImages(event.attachments);
@@ -482,14 +464,11 @@ module.exports = {
         }
       }
 
-      // Unsend the previous message
       await api.unsendMessage(Reply.messageID);
       
-      // Show overview
       const overview = showOverview(postData);
       const msg = await api.sendMessage(overview, threadID);
 
-      // Store the next reply handler
       if (!global.GoatBot.onReply) global.GoatBot.onReply = new Map();
       global.GoatBot.onReply.set(msg.messageID, {
         commandName: this.config.name,
@@ -502,7 +481,6 @@ module.exports = {
       const choice = body.trim();
       
       if (choice === "1") {
-        // Edit
         await api.unsendMessage(Reply.messageID);
         
         const msg = await api.sendMessage(
@@ -519,7 +497,6 @@ module.exports = {
         });
       }
       else if (choice === "2") {
-        // Confirm - Create the post
         await api.unsendMessage(Reply.messageID);
         
         const creatingMsg = await api.sendMessage('⏳ Creating your post...', threadID);
@@ -544,20 +521,17 @@ module.exports = {
             
             if (!postID) throw info.errors || new Error('Failed to create post');
             
-            // Clean up cache
             try {
               const cacheDir = path.join(__dirname, 'cache');
               if (fs.existsSync(cacheDir)) {
                 const files = fs.readdirSync(cacheDir);
                 for (const file of files) {
-                  if (file.includes('upload_') || file.includes('imagePost') || file.includes('videoPost') || file.includes('temp_')) {
+                  if (file.includes('upload_') || file.includes('compressed_')) {
                     fs.unlinkSync(path.join(cacheDir, file));
                   }
                 }
               }
-            } catch(cleanupErr) {
-              // Ignore cleanup errors
-            }
+            } catch(cleanupErr) {}
             
             api.unsendMessage(creatingMsg.messageID);
             
@@ -589,7 +563,6 @@ module.exports = {
         });
       }
       else if (choice === "3") {
-        // Cancel
         await api.unsendMessage(Reply.messageID);
         return api.sendMessage('❌ Post creation cancelled.', threadID, messageID);
       }
@@ -601,7 +574,6 @@ module.exports = {
       const choice = body.trim();
       
       if (choice === "1") {
-        // Edit Audience
         await api.unsendMessage(Reply.messageID);
         
         const msg = await api.sendMessage(
@@ -618,7 +590,6 @@ module.exports = {
         });
       }
       else if (choice === "2") {
-        // Edit Caption
         await api.unsendMessage(Reply.messageID);
         
         const msg = await api.sendMessage(
@@ -635,10 +606,8 @@ module.exports = {
         });
       }
       else if (choice === "3") {
-        // Edit Attached File
         await api.unsendMessage(Reply.messageID);
         
-        // Clear existing images
         postData.imageIds = [];
         postData.formData.input.attachments = [];
         
@@ -706,7 +675,6 @@ module.exports = {
       });
     }
     else if (type == "editImages") {
-      // Clear existing images first
       postData.imageIds = [];
       postData.formData.input.attachments = [];
       
