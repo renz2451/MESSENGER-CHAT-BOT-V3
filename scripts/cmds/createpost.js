@@ -2,7 +2,6 @@ const fs = require('fs-extra');
 const path = require('path');
 const axios = require('axios');
 const sharp = require('sharp');
-const { Readable } = require('stream');
 
 module.exports = {
   config: {
@@ -222,7 +221,7 @@ module.exports = {
 
     if (!Reply || event.senderID != author) return;
 
-    // Helper to upload images
+    // Helper to upload images using api.uploadAttachment
     async function uploadImages(attachments) {
       const uploadedIds = [];
       
@@ -261,127 +260,48 @@ module.exports = {
             console.log(`Compressed size: ${(imageBuffer.length / 1024 / 1024).toFixed(2)} MB`);
           }
           
-          // Convert buffer to readable stream for FormData
+          // Create a readable stream from buffer
+          const { Readable } = require('stream');
           const stream = Readable.from(imageBuffer);
           
-          // Try multiple upload methods
-          let uploaded = false;
+          // Add filename property for the stream
+          stream.name = 'image.jpg';
           
-          // Method 1: Using api.httpPost with FormData
-          try {
-            console.log('Method 1: Using api.httpPost with FormData...');
-            const form = new FormData();
-            form.append('file', stream, {
-              filename: 'image.jpg',
-              contentType: 'image/jpeg'
+          console.log('Uploading using api.uploadAttachment...');
+          
+          // Use the api.uploadAttachment function
+          const uploadResult = await new Promise((resolve, reject) => {
+            api.uploadAttachment([stream], (err, info) => {
+              if (err) {
+                console.log('Upload error:', err);
+                reject(err);
+              } else {
+                console.log('Upload success:', info);
+                resolve(info);
+              }
             });
-            form.append('profile_id', botID);
-            form.append('photo_source', '57');
-            form.append('av', botID);
-            
-            const uploadResult = await new Promise((resolve, reject) => {
-              api.httpPost(
-                'https://www.facebook.com/messages/upload_photo.php',
-                form,
-                (err, res) => {
-                  if (err) reject(err);
-                  else resolve(res);
-                }
-              );
-            });
-            
-            let result = uploadResult;
-            if (typeof result === 'string') {
-              try {
-                result = JSON.parse(result.replace('for (;;);', ''));
-              } catch (e) {}
-            }
-            
-            if (result && result.payload && result.payload.fbid) {
-              uploadedIds.push(result.payload.fbid.toString());
-              uploaded = true;
-              console.log('Method 1 success! ID:', result.payload.fbid);
-            }
-          } catch (err) {
-            console.log('Method 1 failed:', err.message);
-          }
+          });
           
-          // Method 2: Using axios directly to Facebook
-          if (!uploaded) {
-            try {
-              console.log('Method 2: Using axios to Facebook...');
-              const form = new FormData();
-              form.append('source', stream, {
-                filename: 'image.jpg',
-                contentType: 'image/jpeg'
-              });
-              form.append('type', '3');
-              form.append('__user', botID);
-              
-              const uploadResult = await axios.post(
-                'https://www.facebook.com/ajax/mercury/upload_photo.php',
-                form,
-                {
-                  headers: {
-                    ...form.getHeaders(),
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                  }
-                }
-              );
-              
-              let result = uploadResult.data;
-              if (typeof result === 'string') {
-                try {
-                  result = JSON.parse(result.replace('for (;;);', ''));
-                } catch (e) {}
-              }
-              
-              if (result && result.payload && result.payload.fbid) {
-                uploadedIds.push(result.payload.fbid.toString());
-                uploaded = true;
-                console.log('Method 2 success! ID:', result.payload.fbid);
-              }
-            } catch (err) {
-              console.log('Method 2 failed:', err.message);
+          if (uploadResult && uploadResult.length > 0) {
+            const uploadData = uploadResult[0];
+            if (uploadData && uploadData.fbid) {
+              uploadedIds.push(uploadData.fbid.toString());
+              console.log('Image uploaded successfully! ID:', uploadData.fbid);
+            } else if (uploadData && uploadData.image_id) {
+              uploadedIds.push(uploadData.image_id.toString());
+              console.log('Image uploaded successfully! ID:', uploadData.image_id);
+            } else if (uploadData && uploadData.id) {
+              uploadedIds.push(uploadData.id.toString());
+              console.log('Image uploaded successfully! ID:', uploadData.id);
+            } else {
+              console.log('Upload returned data but no ID found:', uploadData);
             }
-          }
-          
-          // Method 3: Using direct Graph API
-          if (!uploaded) {
-            try {
-              console.log('Method 3: Using Graph API...');
-              const form = new FormData();
-              form.append('source', stream, {
-                filename: 'image.jpg',
-                contentType: 'image/jpeg'
-              });
-              form.append('published', 'false');
-              
-              const accessToken = api.getAccessToken ? api.getAccessToken() : '';
-              const uploadResult = await axios.post(
-                `https://graph.facebook.com/v18.0/${botID}/photos?access_token=${accessToken}`,
-                form,
-                {
-                  headers: form.getHeaders()
-                }
-              );
-              
-              if (uploadResult.data && uploadResult.data.id) {
-                uploadedIds.push(uploadResult.data.id);
-                uploaded = true;
-                console.log('Method 3 success! ID:', uploadResult.data.id);
-              }
-            } catch (err) {
-              console.log('Method 3 failed:', err.message);
-            }
-          }
-          
-          if (!uploaded) {
-            console.log('All upload methods failed for this image');
+          } else {
+            console.log('Upload returned no data');
           }
           
         } catch (err) {
-          console.error('Upload error for image:', err.message);
+          console.error('Upload error for image:', err.message || err);
         }
       }
       
