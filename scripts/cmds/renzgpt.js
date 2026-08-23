@@ -85,12 +85,12 @@ module.exports = {
       threadID
     );
 
-    // Progress stages with emojis and text
+    // Progress stages - 5 stages
     const stages = [
-      { percent: 10, filled: 1, emoji: '🔍', text: 'Analyzing request...' },
-      { percent: 25, filled: 3, emoji: '🧠', text: 'Processing with AI...' },
-      { percent: 50, filled: 5, emoji: '⚡', text: 'Generating response...' },
-      { percent: 75, filled: 8, emoji: '📝', text: 'Finalizing output...' },
+      { percent: 20, filled: 2, emoji: '🔍', text: 'Analyzing request...' },
+      { percent: 40, filled: 4, emoji: '🧠', text: 'Processing with AI...' },
+      { percent: 60, filled: 6, emoji: '⚡', text: 'Generating response...' },
+      { percent: 80, filled: 8, emoji: '📝', text: 'Finalizing output...' },
       { percent: 100, filled: 10, emoji: '✅', text: 'Complete!' }
     ];
 
@@ -103,12 +103,12 @@ module.exports = {
           `╭───〔 🤖 𝗥𝗘𝗡𝗭𝗚𝗣𝗧 〕───╮\n│\n│ ${stage.emoji} ${stage.text}\n│ ${bar} ${stage.percent}%\n│\n╰─────────────────────`,
           loadingMsg.messageID
         );
-        await new Promise(resolve => setTimeout(resolve, 300));
+        await new Promise(resolve => setTimeout(resolve, 400));
       }
     };
 
     try {
-      // Update progress: Stage 0 - Analyzing
+      // Stage 0: Analyzing
       await updateProgress(0);
 
       // Send typing indicator
@@ -147,7 +147,7 @@ module.exports = {
         { role: "user", content: messageText }
       ];
 
-      // Update progress: Stage 1 - Processing
+      // Stage 1: Processing
       await updateProgress(1);
 
       // Call OpenRouter API
@@ -171,7 +171,7 @@ module.exports = {
         }
       );
 
-      // Update progress: Stage 2 - Generating
+      // Stage 2: Generating
       await updateProgress(2);
 
       const reply = response.data?.choices?.[0]?.message?.content;
@@ -185,7 +185,7 @@ module.exports = {
         return;
       }
 
-      // Update progress: Stage 3 - Finalizing
+      // Stage 3: Finalizing
       await updateProgress(3);
 
       // Format with proper bold text using Unicode bold characters
@@ -209,35 +209,15 @@ module.exports = {
       // Final formatted reply - This is what replaces the progress message
       const finalReply = `╭───〔 🤖 𝗥𝗲𝗻𝘇𝗚𝗣𝗧 (${boldModel}) 〕───╮\n│\n${formattedReplyLines}\n│\n╰─────────────────────`;
 
-      // Update progress: Stage 4 - Complete (show 100%)
-      await updateProgress(4);
+      // Stage 4: Complete (100%) - SHOW COMPLETE WITH ANSWER
+      // This is the 5th edit that shows the AI response
+      await api.editMessage(
+        finalReply,
+        loadingMsg.messageID
+      );
 
       // React with checkmark
       api.setMessageReaction("✅", messageID, () => {}, true);
-
-      // Small delay before final response
-      await new Promise(resolve => setTimeout(resolve, 300));
-
-      // Check if response is too long
-      if (finalReply.length > 2000) {
-        // If too long, send as separate messages
-        await api.editMessage(
-          `╭───〔 ✅ 𝗥𝗘𝗦𝗣𝗢𝗡𝗦𝗘 𝗥𝗘𝗔𝗗𝗬 〕───╮\n│\n│ Response is too long, splitting...\n│\n╰─────────────────────`,
-          loadingMsg.messageID
-        );
-        
-        const chunks = splitMessage(finalReply, 1900);
-        for (const chunk of chunks) {
-          await message.reply(chunk);
-        }
-      } else {
-        // EDIT THE PROGRESS MESSAGE TO SHOW THE AI RESPONSE
-        await api.editMessage(
-          finalReply,
-          loadingMsg.messageID,
-          threadID
-        );
-      }
 
     } catch (error) {
       console.error('RenzGPT Error:', error);
