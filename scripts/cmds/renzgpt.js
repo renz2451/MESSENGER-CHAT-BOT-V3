@@ -70,7 +70,7 @@ module.exports = {
     }
 
     // Get user API key from config or use default
-    const apiKey = global.GoatBot?.config?.openrouter_api_key || process.env.OPENROUTER_API_KEY || '';
+    const apiKey = global.GoatBot?.config?.openrouter_api_key || process.env.OPENROUTER_API_KEY || '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';
     
     if (!apiKey) {
       return message.reply('❌ OpenRouter API key not configured. Please set OPENROUTER_API_KEY in config or environment.');
