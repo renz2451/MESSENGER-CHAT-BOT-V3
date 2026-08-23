@@ -6,7 +6,7 @@ const GIFEncoder = require("gif-encoder-2");
 module.exports = {
   config: {
     name: "spin",
-    version: "2.0",
+    version: "2.1",
     author: "Renz",
     role: 0,
     countDown: 5,
@@ -48,7 +48,7 @@ module.exports = {
 
     const betAmount = parseAmount(args[0]);
     const minBet = 100;
-    const maxBet = 100000000; // 100M max bet
+    const maxBet = 100000000;
 
     if (isNaN(betAmount) || betAmount < minBet) {
       return message.reply(`🎰 Minimum bet is 100$\nExample: /spin 1k`);
@@ -79,19 +79,19 @@ module.exports = {
       return message.reply(`🚫 Daily limit reached (${maxSpins} spins)`);
     }
 
-    // ===== WIN-ONLY SEGMENTS (Max win 100M) =====
+    // WIN-ONLY Segments
     const segments = [
-      { emoji: "🍎", multiplier: 1, weight: 0.25 },   // 25% - Win 1x
-      { emoji: "🍐", multiplier: 1.5, weight: 0.20 }, // 20% - Win 1.5x
-      { emoji: "🍑", multiplier: 2, weight: 0.18 },   // 18% - Win 2x
-      { emoji: "🍒", multiplier: 2.5, weight: 0.15 }, // 15% - Win 2.5x
-      { emoji: "🍓", multiplier: 3, weight: 0.10 },   // 10% - Win 3x
-      { emoji: "🍇", multiplier: 4, weight: 0.06 },   // 6%  - Win 4x
-      { emoji: "🍉", multiplier: 5, weight: 0.04 },   // 4%  - Win 5x
-      { emoji: "⭐", multiplier: 10, weight: 0.02 }    // 2%  - Win 10x (Jackpot!)
+      { emoji: "🍎", multiplier: 1, weight: 0.25 },
+      { emoji: "🍐", multiplier: 1.5, weight: 0.20 },
+      { emoji: "🍑", multiplier: 2, weight: 0.18 },
+      { emoji: "🍒", multiplier: 2.5, weight: 0.15 },
+      { emoji: "🍓", multiplier: 3, weight: 0.10 },
+      { emoji: "🍇", multiplier: 4, weight: 0.06 },
+      { emoji: "🍉", multiplier: 5, weight: 0.04 },
+      { emoji: "⭐", multiplier: 10, weight: 0.02 }
     ];
 
-    // Pick random segment based on weights
+    // Pick random segment
     const rand = Math.random();
     let cumulative = 0;
     let spinResult = 0;
@@ -106,29 +106,25 @@ module.exports = {
     const resultSegment = segments[spinResult];
     const multiplier = resultSegment.multiplier;
     
-    // Calculate win with 100M cap
     let bonus = betAmount * multiplier;
-    const maxWin = 100000000; // 100M max win
-    
+    const maxWin = 100000000;
     if (bonus > maxWin) {
       bonus = maxWin;
     }
     
-    const win = true; // Always win!
     const finalMoney = currentMoney + bonus;
 
-    // Update user balance
     userData.money = finalMoney;
     await usersData.set(senderID, userData);
 
     global.spinLimit[senderID].count++;
 
-    const status = multiplier >= 10 ? "JACKPOT! 🌟" : `WIN ${multiplier}x 🎉`;
     const isJackpot = multiplier >= 10;
+    const status = isJackpot ? "JACKPOT! 🌟" : `WIN ${multiplier}x 🎉`;
 
     const sent = await message.reply("🌀 Spinning the wheel...");
 
-    // ===== GENERATE GIF =====
+    // ===== GENERATE GIF WITH FIXED ALIGNMENT =====
     const W = 400;
     const H = 400;
     const centerX = W / 2;
@@ -144,6 +140,11 @@ module.exports = {
     encoder.setRepeat(0);
     encoder.start();
 
+    // The arrow points UP (at -PI/2 or 12 o'clock position)
+    // We need the segment's center to align with the arrow
+    // Segment 0 starts at angle 0, so we need to offset
+    const arrowAngle = -Math.PI / 2; // Arrow points up
+    
     for (let f = 0; f < frames; f++) {
       const canvas = Canvas.createCanvas(W, H);
       const ctx = canvas.getContext("2d");
@@ -152,20 +153,27 @@ module.exports = {
       ctx.fillStyle = "#1a0a2e";
       ctx.fillRect(0, 0, W, H);
 
-      // Glow effects
+      // Glow
       const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
       gradient.addColorStop(0, "rgba(212, 175, 55, 0.1)");
       gradient.addColorStop(1, "rgba(26, 10, 46, 0)");
       ctx.fillStyle = gradient;
       ctx.fillRect(0, 0, W, H);
 
-      // Rotation animation
+      // Calculate rotation
       const progress = f / frames;
-      const totalRotation = (2 * Math.PI) * 2.5;
       const eased = 1 - Math.pow(1 - progress, 3);
-      const currentAngle = eased * totalRotation;
-      const finalAngle = spinResult * segmentAngle;
-      const rotation = currentAngle + finalAngle;
+      const totalRotation = (2 * Math.PI) * 3; // 3 full spins
+      const spinAngle = eased * totalRotation;
+      
+      // FIX: Calculate final angle so the selected segment aligns with the arrow
+      // The arrow is at the top (12 o'clock), which is -PI/2 in canvas coordinates
+      // We want the center of the selected segment to be at the top
+      const segmentCenter = spinResult * segmentAngle + segmentAngle / 2;
+      // To align segment center with arrow at top: rotation = -segmentCenter - PI/2
+      const finalRotation = -(segmentCenter) + arrowAngle;
+      
+      const rotation = spinAngle + finalRotation;
 
       // Draw segments
       for (let i = 0; i < totalSegments; i++) {
@@ -177,7 +185,6 @@ module.exports = {
         ctx.arc(centerX, centerY, radius, start, end);
         ctx.closePath();
 
-        // Colors - gold theme for winners!
         const colors = [
           "#FFD700", "#FFC700", "#FFB700", "#FFA700",
           "#FF9700", "#FF8700", "#FF7700", "#FFD700"
@@ -188,7 +195,7 @@ module.exports = {
         ctx.lineWidth = 2;
         ctx.stroke();
 
-        // Draw emoji
+        // Draw emoji and multiplier
         const midAngle = start + segmentAngle / 2;
         const textX = centerX + Math.cos(midAngle) * (radius * 0.7);
         const textY = centerY + Math.sin(midAngle) * (radius * 0.7);
@@ -221,7 +228,7 @@ module.exports = {
       ctx.lineWidth = 3;
       ctx.stroke();
 
-      // Arrow pointer
+      // Arrow pointer (at top)
       ctx.fillStyle = "#ff0000";
       ctx.shadowBlur = 20;
       ctx.shadowColor = "#ff0000";
@@ -231,6 +238,20 @@ module.exports = {
       ctx.lineTo(W / 2, 5);
       ctx.closePath();
       ctx.fill();
+      ctx.shadowBlur = 0;
+
+      // Highlight the winning segment (make it glow)
+      const highlightStart = spinResult * segmentAngle + rotation;
+      const highlightEnd = highlightStart + segmentAngle;
+      ctx.beginPath();
+      ctx.moveTo(centerX, centerY);
+      ctx.arc(centerX, centerY, radius + 5, highlightStart, highlightEnd);
+      ctx.closePath();
+      ctx.shadowBlur = 40;
+      ctx.shadowColor = "rgba(255, 215, 0, 0.8)";
+      ctx.strokeStyle = "#FFD700";
+      ctx.lineWidth = 4;
+      ctx.stroke();
       ctx.shadowBlur = 0;
 
       // "SPIN" text
@@ -249,7 +270,6 @@ module.exports = {
     encoder.finish();
     const buffer = encoder.out.getData();
 
-    // Save and send GIF
     const cacheDir = path.join(__dirname, "cache");
     if (!fs.existsSync(cacheDir)) fs.mkdirSync(cacheDir, { recursive: true });
     const filePath = path.join(cacheDir, `spin_${Date.now()}.gif`);
