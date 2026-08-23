@@ -40,7 +40,7 @@
     "express-rate-limit": "^6.5.2",
     "express-session": "^1.17.3",
     "fast-speedtest-api": "^0.3.2",
-    "fcanew-r3nz75": "^10.1.11",
+    "fcanew-r3nz75": "^10.1.12",
     "fetch-blob": "^4.0.0",
     "figlet": "^1.8.0",
     "fontstyles": "^1.1.2",
