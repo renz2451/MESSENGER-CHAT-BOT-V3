@@ -6,7 +6,7 @@ const sharp = require('sharp');
 module.exports = {
   config: {
     name: "createpost",
-    version: "2.3.0",
+    version: "2.4.0",
     author: "Renz",
     role: 2,
     usePrefix: true,
@@ -27,169 +27,19 @@ module.exports = {
     if (args && args.length > 0) {
       const content = args.join(' ');
       
-      const formData = {
-        input: {
-          composer_entry_point: "inline_composer",
-          composer_source_surface: "timeline",
-          idempotence_token: uuid + "_FEED",
-          source: "WWW",
-          attachments: [],
-          audience: {
-            privacy: {
-              allow: [],
-              base_state: "EVERYONE",
-              deny: [],
-              tag_expansion_state: "UNSPECIFIED"
-            }
-          },
-          message: {
-            ranges: [],
-            text: content
-          },
-          with_tags_ids: [],
-          inline_activities: [],
-          explicit_place_id: "0",
-          text_format_preset_id: "0",
-          logging: {
-            composer_session_id: uuid
-          },
-          tracking: [null],
-          actor_id: api.getCurrentUserID(),
-          client_mutation_id: Math.floor(Math.random() * 17)
-        },
-        displayCommentsFeedbackContext: null,
-        displayCommentsContextEnableComment: null,
-        displayCommentsContextIsAdPreview: null,
-        displayCommentsContextIsAggregatedShare: null,
-        displayCommentsContextIsStorySet: null,
-        feedLocation: "TIMELINE",
-        feedbackSource: 0,
-        focusCommentID: null,
-        gridMediaWidth: 230,
-        groupID: null,
-        scale: 3,
-        privacySelectorRenderLocation: "COMET_STREAM",
-        renderLocation: "timeline",
-        useDefaultActor: false,
-        inviteShortLinkKey: null,
-        isFeed: false,
-        isFundraiser: false,
-        isFunFactPost: false,
-        isGroup: false,
-        isTimeline: true,
-        isSocialLearning: false,
-        isPageNewsFeed: false,
-        isProfileReviews: false,
-        isWorkSharedDraft: false,
-        UFI2CommentsProvider_commentsKey: "ProfileCometTimelineRoute",
-        hashtag: null,
-        canUserManageOffers: false
-      };
-
-      const botID = api.getCurrentUserID();
+      // Use the working createPost function
+      const result = await createPost(api, content, "EVERYONE", []);
       
-      const form = {
-        av: botID,
-        fb_api_req_friendly_name: "ComposerStoryCreateMutation",
-        fb_api_caller_class: "RelayModern",
-        doc_id: "7711610262190099",
-        variables: JSON.stringify(formData)
-      };
-
-      const creatingMsg = await message.reply('📝 Creating your post...');
-
-      api.httpPost('https://www.facebook.com/api/graphql/', form, (e, info) => {
-        try {
-          if (e) throw e;
-          if (typeof info == "string") {
-            info = JSON.parse(info.replace("for (;;);", ""));
-          }
-          
-          const postID = info.data?.story_create?.story?.legacy_story_hideable_id;
-          const urlPost = info.data?.story_create?.story?.url;
-          
-          if (!postID) throw info.errors || new Error('Failed to create post');
-          
-          api.unsendMessage(creatingMsg.messageID);
-          
-          return api.sendMessage(
-            `✅ Post created successfully!\n\n📌 Post ID: ${postID}\n🔗 Link: ${urlPost}`,
-            threadID,
-            messageID
-          );
-        } catch (err) {
-          console.error('Post creation error:', err);
-          api.unsendMessage(creatingMsg.messageID);
-          return api.sendMessage(
-            `❌ Failed to create post. Please try again later.`,
-            threadID,
-            messageID
-          );
-        }
-      });
-      
-      return;
+      if (result.success) {
+        return message.reply(
+          `✅ Post created successfully!\n\n📌 Post ID: ${result.postID}\n🔗 Link: ${result.url}`
+        );
+      } else {
+        return message.reply(`❌ Failed to create post: ${result.error}`);
+      }
     }
 
     const postData = {
-      formData: {
-        input: {
-          composer_entry_point: "inline_composer",
-          composer_source_surface: "timeline",
-          idempotence_token: uuid + "_FEED",
-          source: "WWW",
-          attachments: [],
-          audience: {
-            privacy: {
-              allow: [],
-              base_state: "FRIENDS",
-              deny: [],
-              tag_expansion_state: "UNSPECIFIED"
-            }
-          },
-          message: {
-            ranges: [],
-            text: ""
-          },
-          with_tags_ids: [],
-          inline_activities: [],
-          explicit_place_id: "0",
-          text_format_preset_id: "0",
-          logging: {
-            composer_session_id: uuid
-          },
-          tracking: [null],
-          actor_id: api.getCurrentUserID(),
-          client_mutation_id: Math.floor(Math.random() * 17)
-        },
-        displayCommentsFeedbackContext: null,
-        displayCommentsContextEnableComment: null,
-        displayCommentsContextIsAdPreview: null,
-        displayCommentsContextIsAggregatedShare: null,
-        displayCommentsContextIsStorySet: null,
-        feedLocation: "TIMELINE",
-        feedbackSource: 0,
-        focusCommentID: null,
-        gridMediaWidth: 230,
-        groupID: null,
-        scale: 3,
-        privacySelectorRenderLocation: "COMET_STREAM",
-        renderLocation: "timeline",
-        useDefaultActor: false,
-        inviteShortLinkKey: null,
-        isFeed: false,
-        isFundraiser: false,
-        isFunFactPost: false,
-        isGroup: false,
-        isTimeline: true,
-        isSocialLearning: false,
-        isPageNewsFeed: false,
-        isProfileReviews: false,
-        isWorkSharedDraft: false,
-        UFI2CommentsProvider_commentsKey: "ProfileCometTimelineRoute",
-        hashtag: null,
-        canUserManageOffers: false
-      },
       audience: "FRIENDS",
       caption: "",
       images: [],
@@ -236,7 +86,6 @@ module.exports = {
         try {
           console.log('Downloading image from:', attachment.url);
           
-          // Download image as buffer
           const response = await axios.get(attachment.url, { 
             responseType: 'arraybuffer',
             headers: {
@@ -247,7 +96,6 @@ module.exports = {
           let imageBuffer = Buffer.from(response.data);
           console.log(`Original size: ${(imageBuffer.length / 1024 / 1024).toFixed(2)} MB`);
           
-          // Compress image if needed (under 4MB)
           if (imageBuffer.length > 3.5 * 1024 * 1024) {
             console.log('Compressing image...');
             imageBuffer = await sharp(imageBuffer)
@@ -260,16 +108,12 @@ module.exports = {
             console.log(`Compressed size: ${(imageBuffer.length / 1024 / 1024).toFixed(2)} MB`);
           }
           
-          // Create a readable stream from buffer
           const { Readable } = require('stream');
           const stream = Readable.from(imageBuffer);
-          
-          // Add filename property for the stream
           stream.name = 'image.jpg';
           
           console.log('Uploading using api.uploadAttachment...');
           
-          // Use the api.uploadAttachment function
           const uploadResult = await new Promise((resolve, reject) => {
             api.uploadAttachment([stream], (err, info) => {
               if (err) {
@@ -286,26 +130,18 @@ module.exports = {
             const uploadData = uploadResult[0];
             if (uploadData && uploadData.fbid) {
               uploadedIds.push(uploadData.fbid.toString());
-              console.log('Image uploaded successfully! ID:', uploadData.fbid);
+              console.log('Image uploaded! ID:', uploadData.fbid);
             } else if (uploadData && uploadData.image_id) {
               uploadedIds.push(uploadData.image_id.toString());
-              console.log('Image uploaded successfully! ID:', uploadData.image_id);
-            } else if (uploadData && uploadData.id) {
-              uploadedIds.push(uploadData.id.toString());
-              console.log('Image uploaded successfully! ID:', uploadData.id);
-            } else {
-              console.log('Upload returned data but no ID found:', uploadData);
+              console.log('Image uploaded! ID:', uploadData.image_id);
             }
-          } else {
-            console.log('Upload returned no data');
           }
           
         } catch (err) {
-          console.error('Upload error for image:', err.message || err);
+          console.error('Upload error:', err.message);
         }
       }
       
-      console.log('Uploaded IDs:', uploadedIds);
       return uploadedIds;
     }
 
@@ -340,7 +176,6 @@ module.exports = {
       };
       
       postData.audience = privacyMap[body.trim()];
-      postData.formData.input.audience.privacy.base_state = postData.audience;
       
       await api.unsendMessage(Reply.messageID);
       
@@ -360,7 +195,6 @@ module.exports = {
     else if (type == "caption") {
       if (body.trim().toLowerCase() != "skip" && body.trim() != "") {
         postData.caption = body;
-        postData.formData.input.message.text = body;
       }
       
       await api.unsendMessage(Reply.messageID);
@@ -385,14 +219,7 @@ module.exports = {
           const imageIds = await uploadImages(event.attachments);
           if (imageIds.length > 0) {
             postData.imageIds = imageIds;
-            for (const id of imageIds) {
-              postData.formData.input.attachments.push({
-                "photo": { "id": id }
-              });
-            }
           }
-        } else {
-          console.log('No attachments found in event');
         }
       }
 
@@ -433,54 +260,34 @@ module.exports = {
         
         const creatingMsg = await api.sendMessage('⏳ Creating your post...', threadID);
         
-        const form = {
-          av: botID,
-          fb_api_req_friendly_name: "ComposerStoryCreateMutation",
-          fb_api_caller_class: "RelayModern",
-          doc_id: "7711610262190099",
-          variables: JSON.stringify(postData.formData)
-        };
+        // Create the post using the helper function
+        const result = await createPost(
+          api,
+          postData.caption || "",
+          postData.audience || "FRIENDS",
+          postData.imageIds || []
+        );
         
-        api.httpPost('https://www.facebook.com/api/graphql/', form, (e, info) => {
-          try {
-            if (e) throw e;
-            if (typeof info == "string") {
-              info = JSON.parse(info.replace("for (;;);", ""));
-            }
-            
-            const postID = info.data?.story_create?.story?.legacy_story_hideable_id;
-            const urlPost = info.data?.story_create?.story?.url;
-            
-            if (!postID) throw info.errors || new Error('Failed to create post');
-            
-            api.unsendMessage(creatingMsg.messageID);
-            
-            const privacyMap = {
-              "EVERYONE": "🌍 Everyone",
-              "FRIENDS": "👥 Friends",
-              "SELF": "🔒 Only Me"
-            };
-            
-            return api.sendMessage(
-              `✅ **POST CREATED SUCCESSFULLY!**\n\n` +
-              `👁️ Audience: ${privacyMap[postData.audience]}\n` +
-              `📝 Caption: ${postData.caption || "(Empty)"}\n` +
-              `🖼️ Images: ${postData.imageIds.length > 0 ? postData.imageIds.length + " image(s)" : "None"}\n\n` +
-              `📌 Post ID: ${postID}\n` +
-              `🔗 Link: ${urlPost}`,
-              threadID,
-              messageID
-            );
-          } catch (err) {
-            console.error('Post creation error:', err);
-            api.unsendMessage(creatingMsg.messageID);
-            return api.sendMessage(
-              `❌ Failed to create post. Error: ${err.message || 'Unknown error'}`,
-              threadID,
-              messageID
-            );
-          }
-        });
+        api.unsendMessage(creatingMsg.messageID);
+        
+        if (result.success) {
+          return api.sendMessage(
+            `✅ **POST CREATED SUCCESSFULLY!**\n\n` +
+            `👁️ Audience: ${postData.audience}\n` +
+            `📝 Caption: ${postData.caption || "(Empty)"}\n` +
+            `🖼️ Images: ${postData.imageIds.length > 0 ? postData.imageIds.length + " image(s)" : "None"}\n\n` +
+            `📌 Post ID: ${result.postID}\n` +
+            `🔗 Link: ${result.url}`,
+            threadID,
+            messageID
+          );
+        } else {
+          return api.sendMessage(
+            `❌ Failed to create post: ${result.error}`,
+            threadID,
+            messageID
+          );
+        }
       }
       else if (choice === "3") {
         await api.unsendMessage(Reply.messageID);
@@ -529,7 +336,6 @@ module.exports = {
         await api.unsendMessage(Reply.messageID);
         
         postData.imageIds = [];
-        postData.formData.input.attachments = [];
         
         const msg = await api.sendMessage(
           `🖼️ Send new image(s) or reply "skip" to keep none`,
@@ -560,7 +366,6 @@ module.exports = {
       };
       
       postData.audience = privacyMap[body.trim()];
-      postData.formData.input.audience.privacy.base_state = postData.audience;
       
       await api.unsendMessage(Reply.messageID);
       
@@ -578,7 +383,6 @@ module.exports = {
     else if (type == "editCaption") {
       if (body.trim().toLowerCase() !== "skip" && body.trim() !== "") {
         postData.caption = body;
-        postData.formData.input.message.text = body;
       }
       
       await api.unsendMessage(Reply.messageID);
@@ -596,17 +400,11 @@ module.exports = {
     }
     else if (type == "editImages") {
       postData.imageIds = [];
-      postData.formData.input.attachments = [];
       
       if (body.trim().toLowerCase() !== "skip" && event.attachments && event.attachments.length > 0) {
         const imageIds = await uploadImages(event.attachments);
         if (imageIds.length > 0) {
           postData.imageIds = imageIds;
-          for (const id of imageIds) {
-            postData.formData.input.attachments.push({
-              "photo": { "id": id }
-            });
-          }
         }
       }
       
@@ -625,6 +423,128 @@ module.exports = {
     }
   }
 };
+
+// Helper function to create a post
+async function createPost(api, caption, privacy, imageIds) {
+  try {
+    const uuid = getGUID();
+    const botID = api.getCurrentUserID();
+    
+    // Build attachments
+    const attachments = imageIds.map(id => ({
+      "photo": { "id": id }
+    }));
+    
+    // Use the working GraphQL mutation
+    const form = {
+      av: botID,
+      fb_api_req_friendly_name: "ComposerStoryCreateMutation",
+      fb_api_caller_class: "RelayModern",
+      doc_id: "7711610262190099",
+      variables: JSON.stringify({
+        input: {
+          composer_entry_point: "inline_composer",
+          composer_source_surface: "timeline",
+          idempotence_token: uuid + "_FEED",
+          source: "WWW",
+          attachments: attachments,
+          audience: {
+            privacy: {
+              allow: [],
+              base_state: privacy || "EVERYONE",
+              deny: [],
+              tag_expansion_state: "UNSPECIFIED"
+            }
+          },
+          message: {
+            ranges: [],
+            text: caption || ""
+          },
+          with_tags_ids: [],
+          inline_activities: [],
+          explicit_place_id: "0",
+          text_format_preset_id: "0",
+          logging: {
+            composer_session_id: uuid
+          },
+          tracking: [null],
+          actor_id: botID,
+          client_mutation_id: Math.floor(Math.random() * 17)
+        },
+        displayCommentsFeedbackContext: null,
+        displayCommentsContextEnableComment: null,
+        displayCommentsContextIsAdPreview: null,
+        displayCommentsContextIsAggregatedShare: null,
+        displayCommentsContextIsStorySet: null,
+        feedLocation: "TIMELINE",
+        feedbackSource: 0,
+        focusCommentID: null,
+        gridMediaWidth: 230,
+        groupID: null,
+        scale: 3,
+        privacySelectorRenderLocation: "COMET_STREAM",
+        renderLocation: "timeline",
+        useDefaultActor: false,
+        inviteShortLinkKey: null,
+        isFeed: false,
+        isFundraiser: false,
+        isFunFactPost: false,
+        isGroup: false,
+        isTimeline: true,
+        isSocialLearning: false,
+        isPageNewsFeed: false,
+        isProfileReviews: false,
+        isWorkSharedDraft: false,
+        UFI2CommentsProvider_commentsKey: "ProfileCometTimelineRoute",
+        hashtag: null,
+        canUserManageOffers: false
+      })
+    };
+    
+    const result = await new Promise((resolve, reject) => {
+      api.httpPost('https://www.facebook.com/api/graphql/', form, (err, res) => {
+        if (err) reject(err);
+        else resolve(res);
+      });
+    });
+    
+    let data = result;
+    if (typeof data === 'string') {
+      data = JSON.parse(data.replace('for (;;);', ''));
+    }
+    
+    if (data.errors) {
+      console.error('GraphQL Errors:', data.errors);
+      return { 
+        success: false, 
+        error: data.errors[0]?.message || 'GraphQL error' 
+      };
+    }
+    
+    const postID = data.data?.story_create?.story?.legacy_story_hideable_id;
+    const url = data.data?.story_create?.story?.url;
+    
+    if (!postID) {
+      return { 
+        success: false, 
+        error: 'No post ID returned' 
+      };
+    }
+    
+    return {
+      success: true,
+      postID: postID,
+      url: url || `https://www.facebook.com/${postID}`
+    };
+    
+  } catch (error) {
+    console.error('Create post error:', error);
+    return {
+      success: false,
+      error: error.message || 'Unknown error'
+    };
+  }
+}
 
 function getGUID() {
   var sectionLength = Date.now();
