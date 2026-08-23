@@ -1,12 +1,11 @@
 const fs = require('fs-extra');
 const path = require('path');
 const axios = require('axios');
-const sharp = require('sharp');
 
 module.exports = {
   config: {
     name: "createpost",
-    version: "2.6.0",
+    version: "2.0.0",
     author: "Renz",
     role: 2,
     usePrefix: true,
@@ -21,35 +20,193 @@ module.exports = {
     const { threadID, messageID, senderID } = event;
     const uuid = getGUID();
     
+    // Initialize onReply if it doesn't exist
     if (!global.GoatBot) global.GoatBot = {};
     if (!global.GoatBot.onReply) global.GoatBot.onReply = new Map();
     
+    // If there are arguments, use them as the post content
     if (args && args.length > 0) {
       const content = args.join(' ');
       
-      const result = await createPostUsingFCA(api, content, "EVERYONE", []);
+      // Create a post directly with the content
+      const formData = {
+        input: {
+          composer_entry_point: "inline_composer",
+          composer_source_surface: "timeline",
+          idempotence_token: uuid + "_FEED",
+          source: "WWW",
+          attachments: [],
+          audience: {
+            privacy: {
+              allow: [],
+              base_state: "EVERYONE",
+              deny: [],
+              tag_expansion_state: "UNSPECIFIED"
+            }
+          },
+          message: {
+            ranges: [],
+            text: content
+          },
+          with_tags_ids: [],
+          inline_activities: [],
+          explicit_place_id: "0",
+          text_format_preset_id: "0",
+          logging: {
+            composer_session_id: uuid
+          },
+          tracking: [null],
+          actor_id: api.getCurrentUserID(),
+          client_mutation_id: Math.floor(Math.random() * 17)
+        },
+        displayCommentsFeedbackContext: null,
+        displayCommentsContextEnableComment: null,
+        displayCommentsContextIsAdPreview: null,
+        displayCommentsContextIsAggregatedShare: null,
+        displayCommentsContextIsStorySet: null,
+        feedLocation: "TIMELINE",
+        feedbackSource: 0,
+        focusCommentID: null,
+        gridMediaWidth: 230,
+        groupID: null,
+        scale: 3,
+        privacySelectorRenderLocation: "COMET_STREAM",
+        renderLocation: "timeline",
+        useDefaultActor: false,
+        inviteShortLinkKey: null,
+        isFeed: false,
+        isFundraiser: false,
+        isFunFactPost: false,
+        isGroup: false,
+        isTimeline: true,
+        isSocialLearning: false,
+        isPageNewsFeed: false,
+        isProfileReviews: false,
+        isWorkSharedDraft: false,
+        UFI2CommentsProvider_commentsKey: "ProfileCometTimelineRoute",
+        hashtag: null,
+        canUserManageOffers: false
+      };
+
+      const botID = api.getCurrentUserID();
       
-      if (result.success) {
-        return message.reply(
-          `✅ Post created successfully!\n\n📌 Post ID: ${result.postID}\n🔗 Link: ${result.url}`
-        );
-      } else {
-        return message.reply(`❌ Failed to create post: ${result.error}`);
-      }
+      // Create the post
+      const form = {
+        av: botID,
+        fb_api_req_friendly_name: "ComposerStoryCreateMutation",
+        fb_api_caller_class: "RelayModern",
+        doc_id: "7711610262190099",
+        variables: JSON.stringify(formData)
+      };
+
+      const creatingMsg = await message.reply('📝 Creating your post...');
+
+      api.httpPost('https://www.facebook.com/api/graphql/', form, (e, info) => {
+        try {
+          if (e) throw e;
+          if (typeof info == "string") {
+            info = JSON.parse(info.replace("for (;;);", ""));
+          }
+          
+          const postID = info.data?.story_create?.story?.legacy_story_hideable_id;
+          const urlPost = info.data?.story_create?.story?.url;
+          
+          if (!postID) throw info.errors || new Error('Failed to create post');
+          
+          api.unsendMessage(creatingMsg.messageID);
+          
+          return api.sendMessage(
+            `✅ Post created successfully!\n\n📌 Post ID: ${postID}\n🔗 Link: ${urlPost}`,
+            threadID,
+            messageID
+          );
+        } catch (err) {
+          console.error('Post creation error:', err);
+          api.unsendMessage(creatingMsg.messageID);
+          return api.sendMessage(
+            `❌ Failed to create post. Please try again later.`,
+            threadID,
+            messageID
+          );
+        }
+      });
+      
+      return;
     }
 
+    // If no arguments, start the interactive flow
     const postData = {
+      formData: {
+        input: {
+          composer_entry_point: "inline_composer",
+          composer_source_surface: "timeline",
+          idempotence_token: uuid + "_FEED",
+          source: "WWW",
+          attachments: [],
+          audience: {
+            privacy: {
+              allow: [],
+              base_state: "FRIENDS",
+              deny: [],
+              tag_expansion_state: "UNSPECIFIED"
+            }
+          },
+          message: {
+            ranges: [],
+            text: ""
+          },
+          with_tags_ids: [],
+          inline_activities: [],
+          explicit_place_id: "0",
+          text_format_preset_id: "0",
+          logging: {
+            composer_session_id: uuid
+          },
+          tracking: [null],
+          actor_id: api.getCurrentUserID(),
+          client_mutation_id: Math.floor(Math.random() * 17)
+        },
+        displayCommentsFeedbackContext: null,
+        displayCommentsContextEnableComment: null,
+        displayCommentsContextIsAdPreview: null,
+        displayCommentsContextIsAggregatedShare: null,
+        displayCommentsContextIsStorySet: null,
+        feedLocation: "TIMELINE",
+        feedbackSource: 0,
+        focusCommentID: null,
+        gridMediaWidth: 230,
+        groupID: null,
+        scale: 3,
+        privacySelectorRenderLocation: "COMET_STREAM",
+        renderLocation: "timeline",
+        useDefaultActor: false,
+        inviteShortLinkKey: null,
+        isFeed: false,
+        isFundraiser: false,
+        isFunFactPost: false,
+        isGroup: false,
+        isTimeline: true,
+        isSocialLearning: false,
+        isPageNewsFeed: false,
+        isProfileReviews: false,
+        isWorkSharedDraft: false,
+        UFI2CommentsProvider_commentsKey: "ProfileCometTimelineRoute",
+        hashtag: null,
+        canUserManageOffers: false
+      },
       audience: "FRIENDS",
       caption: "",
       images: [],
       imageIds: []
     };
 
+    // Send the initial message
     const msg = await api.sendMessage(
       `📝 Choose who can see this post:\n\n1️⃣ Everyone\n2️⃣ Friends\n3️⃣ Only Me`,
       threadID
     );
 
+    // Store the reply handler in GoatBot.onReply (Map)
     if (!global.GoatBot.onReply) global.GoatBot.onReply = new Map();
     global.GoatBot.onReply.set(msg.messageID, {
       commandName: this.config.name,
@@ -64,85 +221,96 @@ module.exports = {
   onReply: async function ({ api, event, Reply, getLang }) {
     console.log('onReply triggered:', event.body);
     
+    // Extract data from Reply object
     const { author, postData, type } = Reply;
     const { threadID, messageID, senderID, attachments, body } = event;
     const botID = api.getCurrentUserID();
 
-    if (!Reply || event.senderID != author) return;
+    if (!Reply) {
+      console.log('No Reply found');
+      return;
+    }
 
+    if (event.senderID != author) {
+      console.log('Not the author');
+      return;
+    }
+
+    // Helper to upload images using the correct method
     async function uploadImages(attachments) {
       const uploadedIds = [];
+      const cacheDir = path.join(__dirname, 'cache');
       
-      console.log('Uploading images:', attachments.length);
+      if (!fs.existsSync(cacheDir)) {
+        fs.mkdirSync(cacheDir, { recursive: true });
+      }
 
       for (const attachment of attachments) {
-        if (attachment.type !== "photo") {
-          console.log('Skipping non-photo attachment:', attachment.type);
-          continue;
-        }
+        if (attachment.type !== "photo") continue;
         
         try {
-          console.log('Downloading image from:', attachment.url);
+          const pathImage = path.join(cacheDir, `upload_${Date.now()}.png`);
           
-          const response = await axios.get(attachment.url, { 
-            responseType: 'arraybuffer',
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            }
-          });
+          // Download image
+          const response = await axios.get(attachment.url, { responseType: 'arraybuffer' });
+          fs.writeFileSync(pathImage, Buffer.from(response.data));
           
-          let imageBuffer = Buffer.from(response.data);
-          console.log(`Original size: ${(imageBuffer.length / 1024 / 1024).toFixed(2)} MB`);
+          // Create form data for upload
+          const formData = new FormData();
+          formData.append('file', fs.createReadStream(pathImage));
+          formData.append('profile_id', botID);
+          formData.append('photo_source', '57');
+          formData.append('av', botID);
           
-          if (imageBuffer.length > 3.5 * 1024 * 1024) {
-            console.log('Compressing image...');
-            imageBuffer = await sharp(imageBuffer)
-              .resize(1080, null, {
-                withoutEnlargement: true,
-                fit: 'inside'
-              })
-              .jpeg({ quality: 75, progressive: true })
-              .toBuffer();
-            console.log(`Compressed size: ${(imageBuffer.length / 1024 / 1024).toFixed(2)} MB`);
-          }
-          
-          const { Readable } = require('stream');
-          const stream = Readable.from(imageBuffer);
-          stream.name = 'image.jpg';
-          
-          console.log('Uploading using api.uploadAttachment...');
-          
-          const uploadResult = await new Promise((resolve, reject) => {
-            api.uploadAttachment([stream], (err, info) => {
-              if (err) {
-                console.log('Upload error:', err);
-                reject(err);
-              } else {
-                console.log('Upload success:', info);
-                resolve(info);
-              }
+          // Use api.httpPostFormData if available, otherwise use the alternative
+          let uploadResult;
+          try {
+            // Try using httpPostFormData
+            uploadResult = await api.httpPostFormData(
+              `https://www.facebook.com/profile/picture/upload/?profile_id=${botID}&photo_source=57&av=${botID}`,
+              { file: fs.createReadStream(pathImage) }
+            );
+          } catch (err) {
+            // Alternative method using httpPost with FormData
+            const form = new FormData();
+            form.append('file', fs.createReadStream(pathImage));
+            form.append('profile_id', botID);
+            form.append('photo_source', '57');
+            form.append('av', botID);
+            
+            uploadResult = await new Promise((resolve, reject) => {
+              api.httpPost(
+                `https://www.facebook.com/profile/picture/upload/?profile_id=${botID}&photo_source=57&av=${botID}`,
+                form,
+                (err, res) => {
+                  if (err) reject(err);
+                  else resolve(res);
+                }
+              );
             });
-          });
-          
-          if (uploadResult && uploadResult.length > 0) {
-            const uploadData = uploadResult[0];
-            if (uploadData && uploadData.image_id) {
-              uploadedIds.push(uploadData.image_id.toString());
-              console.log('Image uploaded! ID:', uploadData.image_id);
-            } else if (uploadData && uploadData.fbid) {
-              uploadedIds.push(uploadData.fbid.toString());
-              console.log('Image uploaded! ID:', uploadData.fbid);
-            }
           }
+          
+          let result = uploadResult;
+          if (typeof result === 'string') {
+            result = JSON.parse(result.replace('for (;;);', ''));
+          }
+          
+          if (result && result.payload && result.payload.fbid) {
+            uploadedIds.push(result.payload.fbid.toString());
+          }
+          
+          // Cleanup
+          try { fs.unlinkSync(pathImage); } catch(e) {}
           
         } catch (err) {
-          console.error('Upload error:', err.message);
+          console.error('Upload error for image:', err);
         }
       }
       
       return uploadedIds;
     }
 
+    // Helper to show overview
     function showOverview(data) {
       const privacyMap = {
         "EVERYONE": "🌍 Everyone",
@@ -162,10 +330,12 @@ module.exports = {
     }
 
     if (type == "whoSee") {
+      // Validate the input
       if (!["1", "2", "3"].includes(body.trim())) {
         return api.sendMessage('❌ Please choose 1, 2, or 3', threadID, messageID);
       }
       
+      // Set the privacy based on user choice
       const privacyMap = {
         "1": "EVERYONE",
         "2": "FRIENDS",
@@ -173,7 +343,9 @@ module.exports = {
       };
       
       postData.audience = privacyMap[body.trim()];
+      postData.formData.input.audience.privacy.base_state = postData.audience;
       
+      // Unsend the previous message
       await api.unsendMessage(Reply.messageID);
       
       const msg = await api.sendMessage(
@@ -181,6 +353,7 @@ module.exports = {
         threadID
       );
 
+      // Store the next reply handler
       if (!global.GoatBot.onReply) global.GoatBot.onReply = new Map();
       global.GoatBot.onReply.set(msg.messageID, {
         commandName: this.config.name,
@@ -190,10 +363,13 @@ module.exports = {
       });
     }
     else if (type == "caption") {
+      // Save the content
       if (body.trim().toLowerCase() != "skip" && body.trim() != "") {
         postData.caption = body;
+        postData.formData.input.message.text = body;
       }
       
+      // Unsend the previous message
       await api.unsendMessage(Reply.messageID);
       
       const msg = await api.sendMessage(
@@ -201,6 +377,7 @@ module.exports = {
         threadID
       );
 
+      // Store the next reply handler
       if (!global.GoatBot.onReply) global.GoatBot.onReply = new Map();
       global.GoatBot.onReply.set(msg.messageID, {
         commandName: this.config.name,
@@ -210,21 +387,27 @@ module.exports = {
       });
     }
     else if (type == "images") {
-      if (body.trim().toLowerCase() != "skip") {
-        if (event.attachments && event.attachments.length > 0) {
-          console.log('Processing images...');
-          const imageIds = await uploadImages(event.attachments);
-          if (imageIds.length > 0) {
-            postData.imageIds = imageIds;
+      // Process images if any
+      if (body.trim().toLowerCase() != "skip" && attachments && attachments.length > 0) {
+        const imageIds = await uploadImages(attachments);
+        if (imageIds.length > 0) {
+          postData.imageIds = imageIds;
+          for (const id of imageIds) {
+            postData.formData.input.attachments.push({
+              "photo": { "id": id }
+            });
           }
         }
       }
 
+      // Unsend the previous message
       await api.unsendMessage(Reply.messageID);
       
+      // Show overview
       const overview = showOverview(postData);
       const msg = await api.sendMessage(overview, threadID);
 
+      // Store the next reply handler
       if (!global.GoatBot.onReply) global.GoatBot.onReply = new Map();
       global.GoatBot.onReply.set(msg.messageID, {
         commandName: this.config.name,
@@ -237,6 +420,7 @@ module.exports = {
       const choice = body.trim();
       
       if (choice === "1") {
+        // Edit
         await api.unsendMessage(Reply.messageID);
         
         const msg = await api.sendMessage(
@@ -253,39 +437,77 @@ module.exports = {
         });
       }
       else if (choice === "2") {
+        // Confirm - Create the post
         await api.unsendMessage(Reply.messageID);
         
         const creatingMsg = await api.sendMessage('⏳ Creating your post...', threadID);
         
-        const result = await createPostUsingFCA(
-          api,
-          postData.caption || "",
-          postData.audience || "FRIENDS",
-          postData.imageIds || []
-        );
+        const form = {
+          av: botID,
+          fb_api_req_friendly_name: "ComposerStoryCreateMutation",
+          fb_api_caller_class: "RelayModern",
+          doc_id: "7711610262190099",
+          variables: JSON.stringify(postData.formData)
+        };
         
-        api.unsendMessage(creatingMsg.messageID);
-        
-        if (result.success) {
-          return api.sendMessage(
-            `✅ **POST CREATED SUCCESSFULLY!**\n\n` +
-            `👁️ Audience: ${postData.audience}\n` +
-            `📝 Caption: ${postData.caption || "(Empty)"}\n` +
-            `🖼️ Images: ${postData.imageIds.length > 0 ? postData.imageIds.length + " image(s)" : "None"}\n\n` +
-            `📌 Post ID: ${result.postID}\n` +
-            `🔗 Link: ${result.url}`,
-            threadID,
-            messageID
-          );
-        } else {
-          return api.sendMessage(
-            `❌ Failed to create post: ${result.error}`,
-            threadID,
-            messageID
-          );
-        }
+        api.httpPost('https://www.facebook.com/api/graphql/', form, (e, info) => {
+          try {
+            if (e) throw e;
+            if (typeof info == "string") {
+              info = JSON.parse(info.replace("for (;;);", ""));
+            }
+            
+            const postID = info.data?.story_create?.story?.legacy_story_hideable_id;
+            const urlPost = info.data?.story_create?.story?.url;
+            
+            if (!postID) throw info.errors || new Error('Failed to create post');
+            
+            // Clean up cache
+            try {
+              const cacheDir = path.join(__dirname, 'cache');
+              if (fs.existsSync(cacheDir)) {
+                const files = fs.readdirSync(cacheDir);
+                for (const file of files) {
+                  if (file.includes('upload_') || file.includes('imagePost') || file.includes('videoPost')) {
+                    fs.unlinkSync(path.join(cacheDir, file));
+                  }
+                }
+              }
+            } catch(cleanupErr) {
+              // Ignore cleanup errors
+            }
+            
+            api.unsendMessage(creatingMsg.messageID);
+            
+            const privacyMap = {
+              "EVERYONE": "🌍 Everyone",
+              "FRIENDS": "👥 Friends",
+              "SELF": "🔒 Only Me"
+            };
+            
+            return api.sendMessage(
+              `✅ **POST CREATED SUCCESSFULLY!**\n\n` +
+              `👁️ Audience: ${privacyMap[postData.audience]}\n` +
+              `📝 Caption: ${postData.caption || "(Empty)"}\n` +
+              `🖼️ Images: ${postData.imageIds.length > 0 ? postData.imageIds.length + " image(s)" : "None"}\n\n` +
+              `📌 Post ID: ${postID}\n` +
+              `🔗 Link: ${urlPost}`,
+              threadID,
+              messageID
+            );
+          } catch (err) {
+            console.error('Post creation error:', err);
+            api.unsendMessage(creatingMsg.messageID);
+            return api.sendMessage(
+              `❌ Failed to create post. Error: ${err.message || 'Unknown error'}`,
+              threadID,
+              messageID
+            );
+          }
+        });
       }
       else if (choice === "3") {
+        // Cancel
         await api.unsendMessage(Reply.messageID);
         return api.sendMessage('❌ Post creation cancelled.', threadID, messageID);
       }
@@ -297,6 +519,7 @@ module.exports = {
       const choice = body.trim();
       
       if (choice === "1") {
+        // Edit Audience
         await api.unsendMessage(Reply.messageID);
         
         const msg = await api.sendMessage(
@@ -313,6 +536,7 @@ module.exports = {
         });
       }
       else if (choice === "2") {
+        // Edit Caption
         await api.unsendMessage(Reply.messageID);
         
         const msg = await api.sendMessage(
@@ -329,9 +553,12 @@ module.exports = {
         });
       }
       else if (choice === "3") {
+        // Edit Attached File
         await api.unsendMessage(Reply.messageID);
         
+        // Clear existing images
         postData.imageIds = [];
+        postData.formData.input.attachments = [];
         
         const msg = await api.sendMessage(
           `🖼️ Send new image(s) or reply "skip" to keep none`,
@@ -362,6 +589,7 @@ module.exports = {
       };
       
       postData.audience = privacyMap[body.trim()];
+      postData.formData.input.audience.privacy.base_state = postData.audience;
       
       await api.unsendMessage(Reply.messageID);
       
@@ -379,6 +607,7 @@ module.exports = {
     else if (type == "editCaption") {
       if (body.trim().toLowerCase() !== "skip" && body.trim() !== "") {
         postData.caption = body;
+        postData.formData.input.message.text = body;
       }
       
       await api.unsendMessage(Reply.messageID);
@@ -395,12 +624,19 @@ module.exports = {
       });
     }
     else if (type == "editImages") {
+      // Clear existing images first
       postData.imageIds = [];
+      postData.formData.input.attachments = [];
       
-      if (body.trim().toLowerCase() !== "skip" && event.attachments && event.attachments.length > 0) {
-        const imageIds = await uploadImages(event.attachments);
+      if (body.trim().toLowerCase() !== "skip" && attachments && attachments.length > 0) {
+        const imageIds = await uploadImages(attachments);
         if (imageIds.length > 0) {
           postData.imageIds = imageIds;
+          for (const id of imageIds) {
+            postData.formData.input.attachments.push({
+              "photo": { "id": id }
+            });
+          }
         }
       }
       
@@ -419,173 +655,6 @@ module.exports = {
     }
   }
 };
-
-// Helper function to create a post using FCA's createPost
-async function createPostUsingFCA(api, caption, privacy, imageIds) {
-  try {
-    console.log('Creating post using FCA createPost...');
-    console.log('Caption:', caption);
-    console.log('Privacy:', privacy);
-    console.log('Images:', imageIds);
-    
-    // Check if api.createPost exists
-    if (typeof api.createPost === 'function') {
-      console.log('Using api.createPost directly...');
-      
-      // Build the message object
-      const msg = {
-        body: caption || "",
-        baseState: privacy === "EVERYONE" ? 1 : privacy === "FRIENDS" ? 2 : 3
-      };
-      
-      // Add attachments if there are images
-      if (imageIds && imageIds.length > 0) {
-        // For images, we need to use the attachment upload method
-        // The createPost function handles this internally
-        msg.attachment = imageIds.map(id => ({
-          type: "photo",
-          ID: id
-        }));
-      }
-      
-      // Call createPost
-      const url = await new Promise((resolve, reject) => {
-        api.createPost(msg, (err, url) => {
-          if (err) {
-            console.log('createPost error:', err);
-            reject(err);
-          } else {
-            console.log('createPost success:', url);
-            resolve(url);
-          }
-        });
-      });
-      
-      if (url) {
-        // Extract post ID from URL
-        const postID = url.split('/').pop() || url;
-        return {
-          success: true,
-          postID: postID,
-          url: url
-        };
-      }
-    }
-    
-    // If api.createPost doesn't exist, try the manual method
-    console.log('api.createPost not available, trying alternative...');
-    
-    // Try using the manual GraphQL method as fallback
-    const uuid = getGUID();
-    const botID = api.getCurrentUserID();
-    
-    const attachments = imageIds.map(id => ({
-      "photo": { "id": id }
-    }));
-    
-    const form = {
-      av: botID,
-      fb_api_req_friendly_name: "ComposerStoryCreateMutation",
-      fb_api_caller_class: "RelayModern",
-      doc_id: "6255089511280268",
-      variables: JSON.stringify({
-        input: {
-          composer_entry_point: "inline_composer",
-          composer_source_surface: "timeline",
-          idempotence_token: uuid + "_FEED",
-          source: "WWW",
-          attachments: attachments,
-          audience: {
-            privacy: {
-              allow: [],
-              base_state: privacy || "EVERYONE",
-              deny: [],
-              tag_expansion_state: "UNSPECIFIED"
-            }
-          },
-          message: {
-            ranges: [],
-            text: caption || ""
-          },
-          with_tags_ids: [],
-          inline_activities: [],
-          explicit_place_id: "0",
-          text_format_preset_id: "0",
-          logging: {
-            composer_session_id: uuid
-          },
-          tracking: [null],
-          actor_id: botID,
-          client_mutation_id: Math.floor(Math.random() * 17)
-        },
-        displayCommentsFeedbackContext: null,
-        displayCommentsContextEnableComment: null,
-        displayCommentsContextIsAdPreview: null,
-        displayCommentsContextIsAggregatedShare: null,
-        displayCommentsContextIsStorySet: null,
-        feedLocation: "TIMELINE",
-        feedbackSource: 0,
-        focusCommentID: null,
-        gridMediaWidth: 230,
-        groupID: null,
-        scale: 3,
-        privacySelectorRenderLocation: "COMET_STREAM",
-        renderLocation: "timeline",
-        useDefaultActor: false,
-        inviteShortLinkKey: null,
-        isFeed: false,
-        isFundraiser: false,
-        isFunFactPost: false,
-        isGroup: false,
-        isTimeline: true,
-        isSocialLearning: false,
-        isPageNewsFeed: false,
-        isProfileReviews: false,
-        isWorkSharedDraft: false,
-        UFI2CommentsProvider_commentsKey: "ProfileCometTimelineRoute",
-        hashtag: null,
-        canUserManageOffers: false
-      })
-    };
-    
-    const result = await new Promise((resolve, reject) => {
-      api.httpPost('https://www.facebook.com/api/graphql/', form, (err, res) => {
-        if (err) reject(err);
-        else resolve(res);
-      });
-    });
-    
-    let data = result;
-    if (typeof data === 'string') {
-      data = JSON.parse(data.replace('for (;;);', ''));
-    }
-    
-    if (data.errors) {
-      console.log('GraphQL errors:', data.errors);
-      throw new Error(data.errors[0]?.message || 'GraphQL error');
-    }
-    
-    const postID = data.data?.story_create?.story?.legacy_story_hideable_id;
-    const url = data.data?.story_create?.story?.url;
-    
-    if (postID) {
-      return {
-        success: true,
-        postID: postID,
-        url: url || `https://www.facebook.com/${postID}`
-      };
-    }
-    
-    throw new Error('No post ID returned');
-    
-  } catch (error) {
-    console.error('Create post error:', error);
-    return {
-      success: false,
-      error: error.message || 'Unknown error'
-    };
-  }
-}
 
 function getGUID() {
   var sectionLength = Date.now();
