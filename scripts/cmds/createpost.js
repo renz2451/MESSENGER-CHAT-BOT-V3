@@ -1,54 +1,56 @@
 const fs = require('fs-extra');
 const path = require('path');
 const axios = require('axios');
+const FormData = require('form-data');
 
 module.exports = {
   config: {
     name: "createpost",
-    version: "3.0.0",
+    version: "2.7.0",
     author: "Renz",
     role: 2,
     usePrefix: true,
-    description: "Create a new post on your Facebook timeline",
+    description: "Create a new post on your Facebook timeline with full control",
     guide: "{pn} [content]",
     category: "operator",
     cooldowns: 5,
-    aliases: ["bot_post", "post", "poststatus"]
+    aliases: ["bot_post", "post"]
   },
 
   onStart: async function ({ api, event, args, message }) {
     const { threadID, messageID, senderID } = event;
+    const uuid = getGUID();
+    
+    if (!global.GoatBot) global.GoatBot = {};
+    if (!global.GoatBot.onReply) global.GoatBot.onReply = new Map();
     
     if (args && args.length > 0) {
       const content = args.join(' ');
-      try {
-        const result = await postStatus(api, content);
-        if (result.success) {
-          return message.reply(
-            `✅ Post created successfully!\n\n📌 Post ID: ${result.postID}\n🔗 Link: ${result.url}`
-          );
-        } else {
-          return message.reply(`❌ ${result.error}`);
-        }
-      } catch (err) {
-        return message.reply(`❌ Error: ${err.message}`);
+      
+      const result = await createPostDirect(api, content, "EVERYONE", []);
+      
+      if (result.success) {
+        return message.reply(
+          `✅ Post created successfully!\n\n📌 Post ID: ${result.postID}\n🔗 Link: ${result.url}`
+        );
+      } else {
+        return message.reply(`❌ Failed to create post: ${result.error}`);
       }
     }
 
-    // Start interactive flow
     const postData = {
       audience: "FRIENDS",
       caption: "",
+      images: [],
+      imageIds: []
     };
-
-    if (!global.GoatBot) global.GoatBot = {};
-    if (!global.GoatBot.onReply) global.GoatBot.onReply = new Map();
 
     const msg = await api.sendMessage(
       `📝 Choose who can see this post:\n\n1️⃣ Everyone\n2️⃣ Friends\n3️⃣ Only Me`,
       threadID
     );
 
+    if (!global.GoatBot.onReply) global.GoatBot.onReply = new Map();
     global.GoatBot.onReply.set(msg.messageID, {
       commandName: this.config.name,
       author: senderID,
@@ -60,10 +62,66 @@ module.exports = {
   },
 
   onReply: async function ({ api, event, Reply, getLang }) {
+    console.log('onReply triggered:', event.body);
+    
     const { author, postData, type } = Reply;
-    const { threadID, messageID, senderID, body } = event;
+    const { threadID, messageID, senderID, attachments, body } = event;
+    const botID = api.getCurrentUserID();
 
     if (!Reply || event.senderID != author) return;
+
+    async function uploadImages(attachments) {
+      const uploadedIds = [];
+      const cacheDir = path.join(__dirname, 'cache');
+      
+      if (!fs.existsSync(cacheDir)) {
+        fs.mkdirSync(cacheDir, { recursive: true });
+      }
+
+      for (const attachment of attachments) {
+        if (attachment.type !== "photo") continue;
+        
+        try {
+          const pathImage = path.join(cacheDir, `upload_${Date.now()}.png`);
+          
+          const response = await axios.get(attachment.url, { responseType: 'arraybuffer' });
+          fs.writeFileSync(pathImage, Buffer.from(response.data));
+          
+          const form = new FormData();
+          form.append('file', fs.createReadStream(pathImage));
+          form.append('profile_id', botID);
+          form.append('photo_source', '57');
+          form.append('av', botID);
+          
+          const uploadResult = await new Promise((resolve, reject) => {
+            api.httpPost(
+              `https://www.facebook.com/profile/picture/upload/?profile_id=${botID}&photo_source=57&av=${botID}`,
+              form,
+              (err, res) => {
+                if (err) reject(err);
+                else resolve(res);
+              }
+            );
+          });
+          
+          let result = uploadResult;
+          if (typeof result === 'string') {
+            result = JSON.parse(result.replace('for (;;);', ''));
+          }
+          
+          if (result && result.payload && result.payload.fbid) {
+            uploadedIds.push(result.payload.fbid.toString());
+          }
+          
+          try { fs.unlinkSync(pathImage); } catch(e) {}
+          
+        } catch (err) {
+          console.error('Upload error:', err);
+        }
+      }
+      
+      return uploadedIds;
+    }
 
     function showOverview(data) {
       const privacyMap = {
@@ -76,6 +134,7 @@ module.exports = {
 
 👁️ Audience: ${privacyMap[data.audience] || data.audience}
 📝 Caption: ${data.caption || "(Empty)"}
+🖼️ Attached File: ${data.imageIds.length > 0 ? `${data.imageIds.length} image(s) attached` : "❌ Ignored"}
 
 1️⃣ Edit
 2️⃣ Confirm
@@ -117,6 +176,29 @@ module.exports = {
       
       await api.unsendMessage(Reply.messageID);
       
+      const msg = await api.sendMessage(
+        `📝 Caption: ${postData.caption || "(Empty)"}\n\n🖼️ Send image(s) or reply "skip" to ignore`,
+        threadID
+      );
+
+      if (!global.GoatBot.onReply) global.GoatBot.onReply = new Map();
+      global.GoatBot.onReply.set(msg.messageID, {
+        commandName: this.config.name,
+        author: senderID,
+        postData: postData,
+        type: "images"
+      });
+    }
+    else if (type == "images") {
+      if (body.trim().toLowerCase() != "skip" && attachments && attachments.length > 0) {
+        const imageIds = await uploadImages(attachments);
+        if (imageIds.length > 0) {
+          postData.imageIds = imageIds;
+        }
+      }
+
+      await api.unsendMessage(Reply.messageID);
+      
       const overview = showOverview(postData);
       const msg = await api.sendMessage(overview, threadID);
 
@@ -135,7 +217,7 @@ module.exports = {
         await api.unsendMessage(Reply.messageID);
         
         const msg = await api.sendMessage(
-          `✏️ What do you want to edit?\n\n1️⃣ Audience\n2️⃣ Caption`,
+          `✏️ What do you want to edit?\n\n1️⃣ Audience\n2️⃣ Caption\n3️⃣ Attached File`,
           threadID
         );
         
@@ -152,27 +234,32 @@ module.exports = {
         
         const creatingMsg = await api.sendMessage('⏳ Creating your post...', threadID);
         
-        try {
-          const result = await postStatus(api, postData.caption || "", postData.audience);
-          
-          if (result.success) {
-            api.unsendMessage(creatingMsg.messageID);
-            return api.sendMessage(
-              `✅ **POST CREATED SUCCESSFULLY!**\n\n` +
-              `👁️ Audience: ${postData.audience}\n` +
-              `📝 Caption: ${postData.caption || "(Empty)"}\n\n` +
-              `📌 Post ID: ${result.postID}\n` +
-              `🔗 Link: ${result.url}`,
-              threadID,
-              messageID
-            );
-          } else {
-            api.unsendMessage(creatingMsg.messageID);
-            return api.sendMessage(`❌ ${result.error}`, threadID, messageID);
-          }
-        } catch (err) {
-          api.unsendMessage(creatingMsg.messageID);
-          return api.sendMessage(`❌ Error: ${err.message}`, threadID, messageID);
+        const result = await createPostDirect(
+          api,
+          postData.caption || "",
+          postData.audience || "FRIENDS",
+          postData.imageIds || []
+        );
+        
+        api.unsendMessage(creatingMsg.messageID);
+        
+        if (result.success) {
+          return api.sendMessage(
+            `✅ **POST CREATED SUCCESSFULLY!**\n\n` +
+            `👁️ Audience: ${postData.audience}\n` +
+            `📝 Caption: ${postData.caption || "(Empty)"}\n` +
+            `🖼️ Images: ${postData.imageIds.length > 0 ? postData.imageIds.length + " image(s)" : "None"}\n\n` +
+            `📌 Post ID: ${result.postID}\n` +
+            `🔗 Link: ${result.url}`,
+            threadID,
+            messageID
+          );
+        } else {
+          return api.sendMessage(
+            `❌ Failed to create post: ${result.error}`,
+            threadID,
+            messageID
+          );
         }
       }
       else if (choice === "3") {
@@ -218,8 +305,26 @@ module.exports = {
           type: "editCaption"
         });
       }
+      else if (choice === "3") {
+        await api.unsendMessage(Reply.messageID);
+        
+        postData.imageIds = [];
+        
+        const msg = await api.sendMessage(
+          `🖼️ Send new image(s) or reply "skip" to keep none`,
+          threadID
+        );
+        
+        if (!global.GoatBot.onReply) global.GoatBot.onReply = new Map();
+        global.GoatBot.onReply.set(msg.messageID, {
+          commandName: this.config.name,
+          author: senderID,
+          postData: postData,
+          type: "editImages"
+        });
+      }
       else {
-        return api.sendMessage('❌ Invalid choice. Please choose 1 or 2', threadID, messageID);
+        return api.sendMessage('❌ Invalid choice. Please choose 1, 2, or 3', threadID, messageID);
       }
     }
     else if (type == "editAudience") {
@@ -266,141 +371,159 @@ module.exports = {
         type: "overview"
       });
     }
+    else if (type == "editImages") {
+      postData.imageIds = [];
+      
+      if (body.trim().toLowerCase() !== "skip" && attachments && attachments.length > 0) {
+        const imageIds = await uploadImages(attachments);
+        if (imageIds.length > 0) {
+          postData.imageIds = imageIds;
+        }
+      }
+      
+      await api.unsendMessage(Reply.messageID);
+      
+      const overview = showOverview(postData);
+      const msg = await api.sendMessage(overview, threadID);
+      
+      if (!global.GoatBot.onReply) global.GoatBot.onReply = new Map();
+      global.GoatBot.onReply.set(msg.messageID, {
+        commandName: this.config.name,
+        author: senderID,
+        postData: postData,
+        type: "overview"
+      });
+    }
   }
 };
 
-// Simple status post using the working method from FCA
-async function postStatus(api, message, privacy = "EVERYONE") {
-  return new Promise((resolve, reject) => {
+// Direct post creation function with multiple doc_ids
+async function createPostDirect(api, caption, privacy, imageIds) {
+  const uuid = getGUID();
+  const botID = api.getCurrentUserID();
+  
+  // Try different doc_ids
+  const docIds = [
+    "7711610262190099",  // Original
+    "6255089511280268",  // Alternative
+    "962966763528889",   // Newer
+    "2991841423402055"   // Another
+  ];
+  
+  // Build attachments
+  const attachments = imageIds.map(id => ({
+    "photo": { "id": id }
+  }));
+  
+  for (const docId of docIds) {
     try {
-      // Try using the FCA's internal method if available
-      if (typeof api.createPost === 'function') {
-        api.createPost({ body: message, baseState: privacy === "EVERYONE" ? 1 : privacy === "FRIENDS" ? 2 : 3 }, (err, url) => {
-          if (err) {
-            console.log('api.createPost error:', err);
-            // Fall back to manual method
-            manualPost(api, message, privacy, resolve, reject);
-          } else {
-            const postID = url.split('/').pop() || url;
-            resolve({ success: true, postID: postID, url: url });
-          }
-        });
-      } else {
-        manualPost(api, message, privacy, resolve, reject);
-      }
-    } catch (err) {
-      reject(err);
-    }
-  });
-}
+      console.log(`Trying doc_id: ${docId}`);
+      
+      const formData = {
+        input: {
+          composer_entry_point: "inline_composer",
+          composer_source_surface: "timeline",
+          idempotence_token: uuid + "_FEED",
+          source: "WWW",
+          attachments: attachments,
+          audience: {
+            privacy: {
+              allow: [],
+              base_state: privacy || "EVERYONE",
+              deny: [],
+              tag_expansion_state: "UNSPECIFIED"
+            }
+          },
+          message: {
+            ranges: [],
+            text: caption || ""
+          },
+          with_tags_ids: [],
+          inline_activities: [],
+          explicit_place_id: "0",
+          text_format_preset_id: "0",
+          logging: {
+            composer_session_id: uuid
+          },
+          tracking: [null],
+          actor_id: botID,
+          client_mutation_id: Math.floor(Math.random() * 17)
+        },
+        displayCommentsFeedbackContext: null,
+        displayCommentsContextEnableComment: null,
+        displayCommentsContextIsAdPreview: null,
+        displayCommentsContextIsAggregatedShare: null,
+        displayCommentsContextIsStorySet: null,
+        feedLocation: "TIMELINE",
+        feedbackSource: 0,
+        focusCommentID: null,
+        gridMediaWidth: 230,
+        groupID: null,
+        scale: 3,
+        privacySelectorRenderLocation: "COMET_STREAM",
+        renderLocation: "timeline",
+        useDefaultActor: false,
+        inviteShortLinkKey: null,
+        isFeed: false,
+        isFundraiser: false,
+        isFunFactPost: false,
+        isGroup: false,
+        isTimeline: true,
+        isSocialLearning: false,
+        isPageNewsFeed: false,
+        isProfileReviews: false,
+        isWorkSharedDraft: false,
+        UFI2CommentsProvider_commentsKey: "ProfileCometTimelineRoute",
+        hashtag: null,
+        canUserManageOffers: false
+      };
 
-// Manual post using Graph API
-async function manualPost(api, message, privacy, resolve, reject) {
-  try {
-    const form = {
-      message: message || "",
-      privacy: privacy || "EVERYONE",
-      profile_id: api.getCurrentUserID()
-    };
-    
-    // Try the simple feed publish endpoint
-    api.httpPost('https://www.facebook.com/feed/publish.php', form, (err, res) => {
-      if (err) {
-        reject(err);
-        return;
+      const form = {
+        av: botID,
+        fb_api_req_friendly_name: "ComposerStoryCreateMutation",
+        fb_api_caller_class: "RelayModern",
+        doc_id: docId,
+        variables: JSON.stringify(formData)
+      };
+
+      const result = await new Promise((resolve, reject) => {
+        api.httpPost('https://www.facebook.com/api/graphql/', form, (err, res) => {
+          if (err) reject(err);
+          else resolve(res);
+        });
+      });
+
+      let data = result;
+      if (typeof data === 'string') {
+        data = JSON.parse(data.replace('for (;;);', ''));
+      }
+
+      if (data.errors) {
+        console.log(`doc_id ${docId} failed:`, data.errors[0]?.message);
+        continue;
+      }
+
+      const postID = data.data?.story_create?.story?.legacy_story_hideable_id;
+      const url = data.data?.story_create?.story?.url;
+
+      if (postID) {
+        console.log(`Success with doc_id: ${docId}`);
+        return {
+          success: true,
+          postID: postID,
+          url: url || `https://www.facebook.com/${postID}`
+        };
       }
       
-      try {
-        let data = res;
-        if (typeof data === 'string') {
-          // Try to extract post ID from HTML response
-          const postIdMatch = data.match(/story_fbid=([^&"]+)/);
-          if (postIdMatch) {
-            resolve({ 
-              success: true, 
-              postID: postIdMatch[1], 
-              url: `https://www.facebook.com/${postIdMatch[1]}` 
-            });
-            return;
-          }
-          
-          // Try to parse as JSON
-          try {
-            data = JSON.parse(data.replace('for (;;);', ''));
-          } catch (e) {
-            // Not JSON
-          }
-        }
-        
-        if (data && data.payload && data.payload.post_id) {
-          resolve({ 
-            success: true, 
-            postID: data.payload.post_id, 
-            url: `https://www.facebook.com/${data.payload.post_id}` 
-          });
-        } else {
-          // Try alternative endpoint
-          const altForm = {
-            message: message || "",
-            privacy: privacy || "EVERYONE",
-            profile_id: api.getCurrentUserID(),
-            source: "www"
-          };
-          
-          api.httpPost('https://www.facebook.com/ajax/feed/publish.php', altForm, (err2, res2) => {
-            if (err2) {
-              reject(new Error('All post methods failed. Account may be restricted.'));
-              return;
-            }
-            
-            try {
-              let data2 = res2;
-              if (typeof data2 === 'string') {
-                data2 = JSON.parse(data2.replace('for (;;);', ''));
-              }
-              
-              if (data2 && data2.payload && data2.payload.post_id) {
-                resolve({ 
-                  success: true, 
-                  postID: data2.payload.post_id, 
-                  url: `https://www.facebook.com/${data2.payload.post_id}` 
-                });
-              } else {
-                // One last try - use the Graph API directly via axios
-                const token = api.getAccessToken ? api.getAccessToken() : '';
-                if (token) {
-                  axios.post(`https://graph.facebook.com/me/feed?access_token=${token}`, {
-                    message: message || "",
-                    privacy: `{"value":"${privacy.toLowerCase()}"}`
-                  }).then(response => {
-                    if (response.data && response.data.id) {
-                      resolve({ 
-                        success: true, 
-                        postID: response.data.id, 
-                        url: `https://www.facebook.com/${response.data.id}` 
-                      });
-                    } else {
-                      reject(new Error('Unable to create post. Account may be restricted or API is down.'));
-                    }
-                  }).catch(() => {
-                    reject(new Error('Unable to create post. Account may be restricted or API is down.'));
-                  });
-                } else {
-                  reject(new Error('Unable to create post. Account may be restricted or API is down.'));
-                }
-              }
-            } catch (e) {
-              reject(new Error('Unable to create post. Account may be restricted or API is down.'));
-            }
-          });
-        }
-      } catch (e) {
-        reject(e);
-      }
-    });
-  } catch (err) {
-    reject(err);
+    } catch (error) {
+      console.log(`doc_id ${docId} error:`, error.message);
+    }
   }
+  
+  return {
+    success: false,
+    error: "All doc_ids failed. Facebook may have updated their API."
+  };
 }
 
 function getGUID() {
