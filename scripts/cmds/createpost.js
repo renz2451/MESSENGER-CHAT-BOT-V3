@@ -12,7 +12,7 @@ module.exports = {
     guide: "{pn}",
     category: "operator",
     cooldowns: 5,
-    aliases: ["bot_post"]  // Users can use either "post" or "createpost"
+    aliases: ["bot_post", "post"]
   },
 
   onStart: async function ({ api, event, args, message }) {
@@ -82,20 +82,22 @@ module.exports = {
       canUserManageOffers: false
     };
 
-    return api.sendMessage(
+    // Send the initial message and store the reply handler
+    const msg = await api.sendMessage(
       `📝 Choose who can see this post:\n\n1️⃣ Everyone\n2️⃣ Friends\n3️⃣ Only Me`,
-      threadID,
-      (e, info) => {
-        global.client.handleReply.push({
-          name: this.config.name,
-          messageID: info.messageID,
-          author: senderID,
-          formData,
-          type: "whoSee"
-        });
-      },
-      messageID
+      threadID
     );
+
+    // Store the reply handler with the correct message ID
+    global.client.handleReply.push({
+      name: this.config.name,
+      messageID: msg.messageID, // Use the actual message ID from the sent message
+      author: senderID,
+      formData: formData,
+      type: "whoSee"
+    });
+
+    return;
   },
 
   handleReply: async function ({ event, api, handleReply }) {
@@ -103,6 +105,7 @@ module.exports = {
     const { threadID, messageID, senderID, attachments, body } = event;
     const botID = api.getCurrentUserID();
 
+    // Check if the reply is from the correct user
     if (event.senderID != author) return;
 
     async function uploadAttachments(attachments) {
@@ -121,56 +124,60 @@ module.exports = {
     }
 
     if (type == "whoSee") {
-      if (!["1", "2", "3"].includes(body)) {
+      // Validate the input
+      if (!["1", "2", "3"].includes(body.trim())) {
         return api.sendMessage('❌ Please choose 1, 2, or 3', threadID, messageID);
       }
       
+      // Set the privacy based on user choice
       formData.input.audience.privacy.base_state = 
-        body == 1 ? "EVERYONE" : 
-        body == 2 ? "FRIENDS" : 
+        body.trim() == "1" ? "EVERYONE" : 
+        body.trim() == "2" ? "FRIENDS" : 
         "SELF";
       
-      api.unsendMessage(handleReply.messageID, () => {
-        api.sendMessage(
-          `📝 Reply with your post content (or reply "0" for empty)`,
-          threadID,
-          (e, info) => {
-            global.client.handleReply.push({
-              name: this.config.name,
-              messageID: info.messageID,
-              author: senderID,
-              formData,
-              type: "content"
-            });
-          },
-          messageID
-        );
+      // Unsend the previous message and ask for content
+      await api.unsendMessage(handleReply.messageID);
+      
+      const msg = await api.sendMessage(
+        `📝 Reply with your post content (or reply "0" for empty)`,
+        threadID
+      );
+
+      // Store the next reply handler
+      global.client.handleReply.push({
+        name: this.config.name,
+        messageID: msg.messageID,
+        author: senderID,
+        formData: formData,
+        type: "content"
       });
     }
     else if (type == "content") {
-      if (event.body != "0") {
-        formData.input.message.text = event.body;
+      // Save the content
+      if (body.trim() != "0" && body.trim() != "") {
+        formData.input.message.text = body;
       }
       
-      api.unsendMessage(handleReply.messageID, () => {
-        api.sendMessage(
-          `🖼️ Reply with photo(s) (or reply "0" for no images)`,
-          threadID,
-          (e, info) => {
-            global.client.handleReply.push({
-              name: this.config.name,
-              messageID: info.messageID,
-              author: senderID,
-              formData,
-              type: "image"
-            });
-          },
-          messageID
-        );
+      // Unsend the previous message and ask for images
+      await api.unsendMessage(handleReply.messageID);
+      
+      const msg = await api.sendMessage(
+        `🖼️ Reply with photo(s) (or reply "0" for no images)`,
+        threadID
+      );
+
+      // Store the next reply handler
+      global.client.handleReply.push({
+        name: this.config.name,
+        messageID: msg.messageID,
+        author: senderID,
+        formData: formData,
+        type: "image"
       });
     }
     else if (type == "image") {
-      if (event.body != "0") {
+      // Process images if any
+      if (body.trim() != "0" && attachments && attachments.length > 0) {
         const allStreamFile = [];
         const cacheDir = path.join(__dirname, 'cache');
         const pathImage = path.join(cacheDir, 'imagePost.png');
@@ -181,25 +188,36 @@ module.exports = {
 
         for (const attach of attachments) {
           if (attach.type != "photo") continue;
-          const axios = require('axios');
-          const getFile = (await axios.get(attach.url, { responseType: "arraybuffer" })).data;
-          fs.writeFileSync(pathImage, Buffer.from(getFile));
-          allStreamFile.push(fs.createReadStream(pathImage));
+          try {
+            const axios = require('axios');
+            const getFile = (await axios.get(attach.url, { responseType: "arraybuffer" })).data;
+            fs.writeFileSync(pathImage, Buffer.from(getFile));
+            allStreamFile.push(fs.createReadStream(pathImage));
+          } catch (err) {
+            console.error('Error downloading image:', err);
+          }
         }
 
-        const uploadFiles = await uploadAttachments(allStreamFile);
-        
-        for (let result of uploadFiles) {
-          if (typeof result == "string") {
-            result = JSON.parse(result.replace("for (;;);", ""));
-          }
-          formData.input.attachments.push({
-            "photo": {
-              "id": result.payload.fbid.toString(),
+        if (allStreamFile.length > 0) {
+          const uploadFiles = await uploadAttachments(allStreamFile);
+          
+          for (let result of uploadFiles) {
+            if (typeof result == "string") {
+              result = JSON.parse(result.replace("for (;;);", ""));
             }
-          });
+            if (result && result.payload && result.payload.fbid) {
+              formData.input.attachments.push({
+                "photo": {
+                  "id": result.payload.fbid.toString(),
+                }
+              });
+            }
+          }
         }
       }
+
+      // Unsend the previous message
+      await api.unsendMessage(handleReply.messageID);
 
       // Create the post
       const form = {
@@ -211,7 +229,6 @@ module.exports = {
       };
 
       api.httpPost('https://www.facebook.com/api/graphql/', form, (e, info) => {
-        api.unsendMessage(handleReply.messageID);
         try {
           if (e) throw e;
           if (typeof info == "string") {
@@ -221,7 +238,7 @@ module.exports = {
           const postID = info.data?.story_create?.story?.legacy_story_hideable_id;
           const urlPost = info.data?.story_create?.story?.url;
           
-          if (!postID) throw info.errors;
+          if (!postID) throw info.errors || new Error('Failed to create post');
           
           // Clean up cache
           try {
@@ -234,7 +251,9 @@ module.exports = {
                 }
               }
             }
-          } catch(e) {}
+          } catch(cleanupErr) {
+            // Ignore cleanup errors
+          }
           
           return api.sendMessage(
             `✅ Post created successfully!\n\n📌 Post ID: ${postID}\n🔗 Link: ${urlPost}`,
