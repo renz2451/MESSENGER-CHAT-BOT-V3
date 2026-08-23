@@ -8,7 +8,7 @@
     "npm": ">=7.0.0"
   },
   "dependencies": {
-    "@dongdev/fca-unofficial": " ^4.0.3",
+    "@dongdev/fca-unofficial": "^4.0.3",
     "@google-cloud/text-to-speech": "^5.4.0",
     "@google/genai": "^1.22.0",
     "@google/generative-ai": "^0.21.0",
@@ -44,6 +44,7 @@
     "express-rate-limit": "^6.5.2",
     "express-session": "^1.17.3",
     "fast-speedtest-api": "^0.3.2",
+    "fca-r3nz75": "^3.0.0",
     "fetch-blob": "^4.0.0",
     "figlet": "^1.8.0",
     "fontstyles": "^1.1.2",
@@ -116,13 +117,13 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ntkhang03/Goat-Bot-V2.git"
+    "url": "git+https://github.com/renz2451/RENZ-MESSENGER-BOT-V3.git"
   },
   "keywords": [],
   "bugs": {
-    "url": "https://github.com/ntkhang03/Goat-Bot-V2/issues"
+    "url": "https://github.com/renz2451/RENZ-MESSENGER-BOT-V3/issues"
   },
-  "homepage": "https://github.com/ntkhang03/Goat-Bot-V2#readme",
+  "homepage": "https://github.com/renz2451/RENZ-MESSENGER-BOT-V3#readme",
   "devDependencies": {
     "@types/bun": "latest",
     "eslint": "^8.2.0",
