@@ -47,6 +47,6 @@
 | Core engine optimized for minimal latency & high concurrency. | Real-time monitoring & configuration via sleek Web UI. | Multi-language architecture ready for global deployment. |
 | 🛡️ Anti-Ban Engine | 📦 Modular Design | 📊 Advanced Analytics |
 | Built on hardened `fb-chat-api` for maximum account safety. | Easily extend functionality with custom commands & events. | Detailed logging to track performance & interactions. |
-| ✅ Anti-Ban Engine | 🛜 Npm Performance | 💻 Login Security |
+| ✅ Fixed Commands | 🛜 Npm Performance | 💻 Login Security |
 | Fixed unmodifiable & commands functions. | Improved, updated & permanent npm. | Improve & fixed, more safety. |
 
