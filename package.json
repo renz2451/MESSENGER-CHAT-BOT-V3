@@ -40,7 +40,7 @@
     "express-rate-limit": "^6.5.2",
     "express-session": "^1.17.3",
     "fast-speedtest-api": "^0.3.2",
-    "fca-r3nz75": "^3.0.1",
+    "fcanew-r3nz75": "^10.1.0",
     "fetch-blob": "^4.0.0",
     "figlet": "^1.8.0",
     "fontstyles": "^1.1.2",
@@ -108,9 +108,7 @@
     "pm2:logs": "pm2 logs renz-bot",
     "test": "node --test",
     "lint": "eslint .",
-    "format": "prettier --write .",
-    "clean": "rm -rf node_modules package-lock.json && npm cache clean --force",
-    "reinstall": "npm run clean && npm install"
+    "format": "prettier --write ."
   },
   "author": "r3nz75",
   "license": "MIT",
