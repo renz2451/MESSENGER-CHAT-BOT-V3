@@ -2,11 +2,12 @@ const fs = require('fs-extra');
 const path = require('path');
 const axios = require('axios');
 const sharp = require('sharp');
+const { Readable } = require('stream');
 
 module.exports = {
   config: {
     name: "createpost",
-    version: "2.2.0",
+    version: "2.3.0",
     author: "Renz",
     role: 2,
     usePrefix: true,
@@ -221,7 +222,7 @@ module.exports = {
 
     if (!Reply || event.senderID != author) return;
 
-    // Helper to upload images using buffer (no file writing)
+    // Helper to upload images
     async function uploadImages(attachments) {
       const uploadedIds = [];
       
@@ -250,8 +251,6 @@ module.exports = {
           // Compress image if needed (under 4MB)
           if (imageBuffer.length > 3.5 * 1024 * 1024) {
             console.log('Compressing image...');
-            
-            // Resize and compress using sharp with buffer input/output
             imageBuffer = await sharp(imageBuffer)
               .resize(1080, null, {
                 withoutEnlargement: true,
@@ -259,17 +258,20 @@ module.exports = {
               })
               .jpeg({ quality: 75, progressive: true })
               .toBuffer();
-            
             console.log(`Compressed size: ${(imageBuffer.length / 1024 / 1024).toFixed(2)} MB`);
           }
           
-          // Upload using correct Facebook endpoint
-          console.log('Uploading image to Facebook...');
+          // Convert buffer to readable stream for FormData
+          const stream = Readable.from(imageBuffer);
           
-          // Method 1: Try using mercury upload
+          // Try multiple upload methods
+          let uploaded = false;
+          
+          // Method 1: Using api.httpPost with FormData
           try {
+            console.log('Method 1: Using api.httpPost with FormData...');
             const form = new FormData();
-            form.append('file', imageBuffer, {
+            form.append('file', stream, {
               filename: 'image.jpg',
               contentType: 'image/jpeg'
             });
@@ -292,93 +294,91 @@ module.exports = {
             if (typeof result === 'string') {
               try {
                 result = JSON.parse(result.replace('for (;;);', ''));
-              } catch (e) {
-                console.log('Could not parse result as JSON');
-              }
-            }
-            
-            console.log('Upload result:', result);
-            
-            if (result && result.payload && result.payload.fbid) {
-              const imageId = result.payload.fbid.toString();
-              uploadedIds.push(imageId);
-              console.log('Image uploaded successfully! ID:', imageId);
-              continue;
-            }
-          } catch (err) {
-            console.log('Method 1 failed, trying method 2...', err.message);
-          }
-          
-          // Method 2: Try using photo upload endpoint
-          try {
-            const form = new FormData();
-            form.append('source', imageBuffer, {
-              filename: 'image.jpg',
-              contentType: 'image/jpeg'
-            });
-            form.append('type', '3');
-            form.append('__user', botID);
-            
-            const uploadResult = await new Promise((resolve, reject) => {
-              api.httpPost(
-                'https://www.facebook.com/ajax/mercury/upload_photo.php',
-                form,
-                (err, res) => {
-                  if (err) reject(err);
-                  else resolve(res);
-                }
-              );
-            });
-            
-            let result = uploadResult;
-            if (typeof result === 'string') {
-              try {
-                result = JSON.parse(result.replace('for (;;);', ''));
               } catch (e) {}
             }
             
-            console.log('Method 2 upload result:', result);
-            
             if (result && result.payload && result.payload.fbid) {
-              const imageId = result.payload.fbid.toString();
-              uploadedIds.push(imageId);
-              console.log('Image uploaded successfully via method 2! ID:', imageId);
-              continue;
+              uploadedIds.push(result.payload.fbid.toString());
+              uploaded = true;
+              console.log('Method 1 success! ID:', result.payload.fbid);
             }
           } catch (err) {
-            console.log('Method 2 failed, trying method 3...', err.message);
+            console.log('Method 1 failed:', err.message);
           }
           
-          // Method 3: Try using graph API
-          try {
-            const form = new FormData();
-            form.append('source', imageBuffer, {
-              filename: 'image.jpg',
-              contentType: 'image/jpeg'
-            });
-            form.append('access_token', api.getAccessToken ? api.getAccessToken() : '');
-            form.append('published', 'false');
-            
-            const uploadResult = await axios.post(
-              'https://graph.facebook.com/v18.0/me/photos',
-              form,
-              {
-                headers: form.getHeaders()
+          // Method 2: Using axios directly to Facebook
+          if (!uploaded) {
+            try {
+              console.log('Method 2: Using axios to Facebook...');
+              const form = new FormData();
+              form.append('source', stream, {
+                filename: 'image.jpg',
+                contentType: 'image/jpeg'
+              });
+              form.append('type', '3');
+              form.append('__user', botID);
+              
+              const uploadResult = await axios.post(
+                'https://www.facebook.com/ajax/mercury/upload_photo.php',
+                form,
+                {
+                  headers: {
+                    ...form.getHeaders(),
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                  }
+                }
+              );
+              
+              let result = uploadResult.data;
+              if (typeof result === 'string') {
+                try {
+                  result = JSON.parse(result.replace('for (;;);', ''));
+                } catch (e) {}
               }
-            );
-            
-            console.log('Method 3 upload result:', uploadResult.data);
-            
-            if (uploadResult.data && uploadResult.data.id) {
-              uploadedIds.push(uploadResult.data.id);
-              console.log('Image uploaded successfully via Graph API! ID:', uploadResult.data.id);
-              continue;
+              
+              if (result && result.payload && result.payload.fbid) {
+                uploadedIds.push(result.payload.fbid.toString());
+                uploaded = true;
+                console.log('Method 2 success! ID:', result.payload.fbid);
+              }
+            } catch (err) {
+              console.log('Method 2 failed:', err.message);
             }
-          } catch (err) {
-            console.log('Method 3 failed:', err.message);
           }
           
-          console.log('All upload methods failed for this image');
+          // Method 3: Using direct Graph API
+          if (!uploaded) {
+            try {
+              console.log('Method 3: Using Graph API...');
+              const form = new FormData();
+              form.append('source', stream, {
+                filename: 'image.jpg',
+                contentType: 'image/jpeg'
+              });
+              form.append('published', 'false');
+              
+              const accessToken = api.getAccessToken ? api.getAccessToken() : '';
+              const uploadResult = await axios.post(
+                `https://graph.facebook.com/v18.0/${botID}/photos?access_token=${accessToken}`,
+                form,
+                {
+                  headers: form.getHeaders()
+                }
+              );
+              
+              if (uploadResult.data && uploadResult.data.id) {
+                uploadedIds.push(uploadResult.data.id);
+                uploaded = true;
+                console.log('Method 3 success! ID:', uploadResult.data.id);
+              }
+            } catch (err) {
+              console.log('Method 3 failed:', err.message);
+            }
+          }
+          
+          if (!uploaded) {
+            console.log('All upload methods failed for this image');
+          }
           
         } catch (err) {
           console.error('Upload error for image:', err.message);
