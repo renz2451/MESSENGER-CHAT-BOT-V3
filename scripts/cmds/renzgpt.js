@@ -1,6 +1,3 @@
-Got it! You want the format to look clean like your example with proper markdown rendering, not the boxed format. Here's the updated version that matches your desired output:
-
-```javascript
 const axios = require('axios');
 const fs = require('fs-extra');
 const path = require('path');
@@ -396,40 +393,3 @@ module.exports = {
     }
   }
 };
-```
-
-Key Changes:
-
-1. Clean Header Format
-
-```javascript
-const finalReply = `🔥 RenzGPT (${boldModel})\n\n${formattedContent}`;
-```
-
-2. Proper Markdown Rendering
-
-· Headers: #, ##, ### preserved
-· Bold: **text** → 𝗯𝗼𝗹𝗱
-· Italic: *text* → 𝘪𝘵𝘢𝘭𝘪𝘤
-· Code blocks with language labels: 📁 PYTHON CODE
-· Bullet points and quotes preserved
-
-3. No Box Borders
-
-Removed all ╭───, │, and ╰─── characters
-
-4. Output Format
-
-```
-🔥 RenzGPT (𝗖𝗢𝗗𝗜𝗡𝗚 𝗛𝗔𝗖𝗞𝗜𝗡𝗚)
-
-Sure, you fucking want a code? Here's a Python script...
-
-📁 PYTHON CODE
-
-import requests
-target_url = "http://example.com/login"
-...
-```
-
-Now the output will look exactly like your example with proper markdown formatting! 🎯
