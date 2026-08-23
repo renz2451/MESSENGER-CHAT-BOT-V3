@@ -9,7 +9,7 @@ module.exports = {
     role: 2,
     usePrefix: true,
     description: "Create a new post on your Facebook timeline",
-    guide: "{pn}",
+    guide: "{pn} [content]",
     category: "operator",
     cooldowns: 5,
     aliases: ["bot_post", "post"]
@@ -23,6 +23,117 @@ module.exports = {
     if (!global.client) global.client = {};
     if (!global.client.handleReply) global.client.handleReply = [];
     
+    // If there are arguments, use them as the post content
+    if (args && args.length > 0) {
+      const content = args.join(' ');
+      
+      // Create a post directly with the content
+      const formData = {
+        input: {
+          composer_entry_point: "inline_composer",
+          composer_source_surface: "timeline",
+          idempotence_token: uuid + "_FEED",
+          source: "WWW",
+          attachments: [],
+          audience: {
+            privacy: {
+              allow: [],
+              base_state: "EVERYONE",
+              deny: [],
+              tag_expansion_state: "UNSPECIFIED"
+            }
+          },
+          message: {
+            ranges: [],
+            text: content
+          },
+          with_tags_ids: [],
+          inline_activities: [],
+          explicit_place_id: "0",
+          text_format_preset_id: "0",
+          logging: {
+            composer_session_id: uuid
+          },
+          tracking: [null],
+          actor_id: api.getCurrentUserID(),
+          client_mutation_id: Math.floor(Math.random() * 17)
+        },
+        displayCommentsFeedbackContext: null,
+        displayCommentsContextEnableComment: null,
+        displayCommentsContextIsAdPreview: null,
+        displayCommentsContextIsAggregatedShare: null,
+        displayCommentsContextIsStorySet: null,
+        feedLocation: "TIMELINE",
+        feedbackSource: 0,
+        focusCommentID: null,
+        gridMediaWidth: 230,
+        groupID: null,
+        scale: 3,
+        privacySelectorRenderLocation: "COMET_STREAM",
+        renderLocation: "timeline",
+        useDefaultActor: false,
+        inviteShortLinkKey: null,
+        isFeed: false,
+        isFundraiser: false,
+        isFunFactPost: false,
+        isGroup: false,
+        isTimeline: true,
+        isSocialLearning: false,
+        isPageNewsFeed: false,
+        isProfileReviews: false,
+        isWorkSharedDraft: false,
+        UFI2CommentsProvider_commentsKey: "ProfileCometTimelineRoute",
+        hashtag: null,
+        canUserManageOffers: false
+      };
+
+      const botID = api.getCurrentUserID();
+      
+      // Create the post
+      const form = {
+        av: botID,
+        fb_api_req_friendly_name: "ComposerStoryCreateMutation",
+        fb_api_caller_class: "RelayModern",
+        doc_id: "7711610262190099",
+        variables: JSON.stringify(formData)
+      };
+
+      const creatingMsg = await message.reply('📝 Creating your post...');
+
+      api.httpPost('https://www.facebook.com/api/graphql/', form, (e, info) => {
+        try {
+          if (e) throw e;
+          if (typeof info == "string") {
+            info = JSON.parse(info.replace("for (;;);", ""));
+          }
+          
+          const postID = info.data?.story_create?.story?.legacy_story_hideable_id;
+          const urlPost = info.data?.story_create?.story?.url;
+          
+          if (!postID) throw info.errors || new Error('Failed to create post');
+          
+          api.unsendMessage(creatingMsg.messageID);
+          
+          return api.sendMessage(
+            `✅ Post created successfully!\n\n📌 Post ID: ${postID}\n🔗 Link: ${urlPost}`,
+            threadID,
+            messageID
+          );
+        } catch (err) {
+          console.error('Post creation error:', err);
+          api.unsendMessage(creatingMsg.messageID);
+          return api.sendMessage(
+            `❌ Failed to create post. Please try again later.`,
+            threadID,
+            messageID
+          );
+        }
+      });
+      
+      return;
+    }
+
+    // If no arguments, start the interactive flow
     const formData = {
       input: {
         composer_entry_point: "inline_composer",
@@ -82,16 +193,17 @@ module.exports = {
       canUserManageOffers: false
     };
 
-    // Send the initial message and store the reply handler
+    // Send the initial message
     const msg = await api.sendMessage(
       `📝 Choose who can see this post:\n\n1️⃣ Everyone\n2️⃣ Friends\n3️⃣ Only Me`,
       threadID
     );
 
-    // Store the reply handler with the correct message ID
+    // Store the reply handler
+    if (!global.client.handleReply) global.client.handleReply = [];
     global.client.handleReply.push({
       name: this.config.name,
-      messageID: msg.messageID, // Use the actual message ID from the sent message
+      messageID: msg.messageID,
       author: senderID,
       formData: formData,
       type: "whoSee"
@@ -100,13 +212,23 @@ module.exports = {
     return;
   },
 
-  handleReply: async function ({ event, api, handleReply }) {
-    const { type, author, formData } = handleReply;
+  onReply: async function ({ event, api, handleReply }) {
+    // This is called when a user replies to a message
+    console.log('onReply triggered:', event.body);
+    
+    const { type, author, formData } = handleReply || {};
     const { threadID, messageID, senderID, attachments, body } = event;
     const botID = api.getCurrentUserID();
 
-    // Check if the reply is from the correct user
-    if (event.senderID != author) return;
+    if (!handleReply) {
+      console.log('No handleReply found');
+      return;
+    }
+
+    if (event.senderID != author) {
+      console.log('Not the author');
+      return;
+    }
 
     async function uploadAttachments(attachments) {
       let uploads = [];
@@ -135,7 +257,7 @@ module.exports = {
         body.trim() == "2" ? "FRIENDS" : 
         "SELF";
       
-      // Unsend the previous message and ask for content
+      // Unsend the previous message
       await api.unsendMessage(handleReply.messageID);
       
       const msg = await api.sendMessage(
@@ -144,6 +266,7 @@ module.exports = {
       );
 
       // Store the next reply handler
+      if (!global.client.handleReply) global.client.handleReply = [];
       global.client.handleReply.push({
         name: this.config.name,
         messageID: msg.messageID,
@@ -158,7 +281,7 @@ module.exports = {
         formData.input.message.text = body;
       }
       
-      // Unsend the previous message and ask for images
+      // Unsend the previous message
       await api.unsendMessage(handleReply.messageID);
       
       const msg = await api.sendMessage(
@@ -167,6 +290,7 @@ module.exports = {
       );
 
       // Store the next reply handler
+      if (!global.client.handleReply) global.client.handleReply = [];
       global.client.handleReply.push({
         name: this.config.name,
         messageID: msg.messageID,
