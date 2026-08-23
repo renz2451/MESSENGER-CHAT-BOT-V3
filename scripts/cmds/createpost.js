@@ -1,7 +1,6 @@
 const fs = require('fs-extra');
 const path = require('path');
 const axios = require('axios');
-const FormData = require('form-data');
 
 module.exports = {
   config: {
@@ -197,8 +196,8 @@ module.exports = {
       },
       audience: "FRIENDS",
       caption: "",
-      images: [],
-      imageIds: []
+      // images: [],
+      // imageIds: []
     };
 
     // Send the initial message
@@ -237,6 +236,7 @@ module.exports = {
       return;
     }
 
+    /* // COMMENTED OUT: Image upload functionality
     // Helper to upload images using the correct method
     async function uploadImages(attachments) {
       const uploadedIds = [];
@@ -250,37 +250,46 @@ module.exports = {
         if (attachment.type !== "photo") continue;
         
         try {
-          const timestamp = Date.now();
-          const pathImage = path.join(cacheDir, `upload_${timestamp}.jpg`);
+          const pathImage = path.join(cacheDir, `upload_${Date.now()}.png`);
           
           // Download image
-          console.log('Downloading image...');
-          const response = await axios.get(attachment.url, { 
-            responseType: 'arraybuffer',
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            }
-          });
+          const response = await axios.get(attachment.url, { responseType: 'arraybuffer' });
           fs.writeFileSync(pathImage, Buffer.from(response.data));
           
-          // Upload using FormData
-          console.log('Uploading image...');
-          const form = new FormData();
-          form.append('file', fs.createReadStream(pathImage));
-          form.append('profile_id', botID);
-          form.append('photo_source', '57');
-          form.append('av', botID);
+          // Create form data for upload
+          const formData = new FormData();
+          formData.append('file', fs.createReadStream(pathImage));
+          formData.append('profile_id', botID);
+          formData.append('photo_source', '57');
+          formData.append('av', botID);
           
-          const uploadResult = await new Promise((resolve, reject) => {
-            api.httpPost(
+          // Use api.httpPostFormData if available, otherwise use the alternative
+          let uploadResult;
+          try {
+            // Try using httpPostFormData
+            uploadResult = await api.httpPostFormData(
               `https://www.facebook.com/profile/picture/upload/?profile_id=${botID}&photo_source=57&av=${botID}`,
-              form,
-              (err, res) => {
-                if (err) reject(err);
-                else resolve(res);
-              }
+              { file: fs.createReadStream(pathImage) }
             );
-          });
+          } catch (err) {
+            // Alternative method using httpPost with FormData
+            const form = new FormData();
+            form.append('file', fs.createReadStream(pathImage));
+            form.append('profile_id', botID);
+            form.append('photo_source', '57');
+            form.append('av', botID);
+            
+            uploadResult = await new Promise((resolve, reject) => {
+              api.httpPost(
+                `https://www.facebook.com/profile/picture/upload/?profile_id=${botID}&photo_source=57&av=${botID}`,
+                form,
+                (err, res) => {
+                  if (err) reject(err);
+                  else resolve(res);
+                }
+              );
+            });
+          }
           
           let result = uploadResult;
           if (typeof result === 'string') {
@@ -289,23 +298,21 @@ module.exports = {
           
           if (result && result.payload && result.payload.fbid) {
             uploadedIds.push(result.payload.fbid.toString());
-            console.log('Image uploaded! ID:', result.payload.fbid);
-          } else {
-            console.log('Upload failed:', result);
           }
           
           // Cleanup
           try { fs.unlinkSync(pathImage); } catch(e) {}
           
         } catch (err) {
-          console.error('Upload error for image:', err.message);
+          console.error('Upload error for image:', err);
         }
       }
       
       return uploadedIds;
     }
+    */
 
-    // Helper to show overview
+    // Helper to show overview (without images)
     function showOverview(data) {
       const privacyMap = {
         "EVERYONE": "🌍 Everyone",
@@ -317,7 +324,6 @@ module.exports = {
 
 👁️ Audience: ${privacyMap[data.audience] || data.audience}
 📝 Caption: ${data.caption || "(Empty)"}
-🖼️ Attached File: ${data.imageIds.length > 0 ? `${data.imageIds.length} image(s) attached` : "❌ Ignored"}
 
 1️⃣ Edit
 2️⃣ Confirm
@@ -367,6 +373,7 @@ module.exports = {
       // Unsend the previous message
       await api.unsendMessage(Reply.messageID);
       
+      /* // COMMENTED OUT: Skip image step and go directly to overview
       const msg = await api.sendMessage(
         `📝 Caption: ${postData.caption || "(Empty)"}\n\n🖼️ Send image(s) or reply "skip" to ignore`,
         threadID
@@ -380,23 +387,32 @@ module.exports = {
         postData: postData,
         type: "images"
       });
+      */
+      
+      // Skip image step - go directly to overview
+      const overview = showOverview(postData);
+      const msg = await api.sendMessage(overview, threadID);
+
+      if (!global.GoatBot.onReply) global.GoatBot.onReply = new Map();
+      global.GoatBot.onReply.set(msg.messageID, {
+        commandName: this.config.name,
+        author: senderID,
+        postData: postData,
+        type: "overview"
+      });
     }
+    /* // COMMENTED OUT: Image handling step
     else if (type == "images") {
       // Process images if any
-      if (body.trim().toLowerCase() != "skip") {
-        if (attachments && attachments.length > 0) {
-          console.log('Processing images...');
-          const imageIds = await uploadImages(attachments);
-          if (imageIds.length > 0) {
-            postData.imageIds = imageIds;
-            for (const id of imageIds) {
-              postData.formData.input.attachments.push({
-                "photo": { "id": id }
-              });
-            }
+      if (body.trim().toLowerCase() != "skip" && attachments && attachments.length > 0) {
+        const imageIds = await uploadImages(attachments);
+        if (imageIds.length > 0) {
+          postData.imageIds = imageIds;
+          for (const id of imageIds) {
+            postData.formData.input.attachments.push({
+              "photo": { "id": id }
+            });
           }
-        } else {
-          console.log('No attachments found');
         }
       }
 
@@ -416,6 +432,7 @@ module.exports = {
         type: "overview"
       });
     }
+    */
     else if (type == "overview") {
       const choice = body.trim();
       
@@ -424,7 +441,7 @@ module.exports = {
         await api.unsendMessage(Reply.messageID);
         
         const msg = await api.sendMessage(
-          `✏️ What do you want to edit?\n\n1️⃣ Audience\n2️⃣ Caption\n3️⃣ Attached File`,
+          `✏️ What do you want to edit?\n\n1️⃣ Audience\n2️⃣ Caption`,
           threadID
         );
         
@@ -450,9 +467,6 @@ module.exports = {
           variables: JSON.stringify(postData.formData)
         };
         
-        console.log('Creating post with doc_id: 7711610262190099');
-        console.log('Post data:', JSON.stringify(postData.formData, null, 2));
-        
         api.httpPost('https://www.facebook.com/api/graphql/', form, (e, info) => {
           try {
             if (e) throw e;
@@ -460,17 +474,10 @@ module.exports = {
               info = JSON.parse(info.replace("for (;;);", ""));
             }
             
-            console.log('Response received');
-            
-            if (info.errors) {
-              console.log('GraphQL errors:', JSON.stringify(info.errors, null, 2));
-              throw info.errors;
-            }
-            
             const postID = info.data?.story_create?.story?.legacy_story_hideable_id;
             const urlPost = info.data?.story_create?.story?.url;
             
-            if (!postID) throw new Error('No post ID returned');
+            if (!postID) throw info.errors || new Error('Failed to create post');
             
             // Clean up cache
             try {
@@ -498,8 +505,7 @@ module.exports = {
             return api.sendMessage(
               `✅ **POST CREATED SUCCESSFULLY!**\n\n` +
               `👁️ Audience: ${privacyMap[postData.audience]}\n` +
-              `📝 Caption: ${postData.caption || "(Empty)"}\n` +
-              `🖼️ Images: ${postData.imageIds.length > 0 ? postData.imageIds.length + " image(s)" : "None"}\n\n` +
+              `📝 Caption: ${postData.caption || "(Empty)"}\n\n` +
               `📌 Post ID: ${postID}\n` +
               `🔗 Link: ${urlPost}`,
               threadID,
@@ -508,16 +514,8 @@ module.exports = {
           } catch (err) {
             console.error('Post creation error:', err);
             api.unsendMessage(creatingMsg.messageID);
-            
-            let errorMsg = 'Unknown error';
-            if (Array.isArray(err)) {
-              errorMsg = err.map(e => e.message).join('\n');
-            } else if (err.message) {
-              errorMsg = err.message;
-            }
-            
             return api.sendMessage(
-              `❌ Failed to create post.\nError: ${errorMsg}`,
+              `❌ Failed to create post. Error: ${err.message || 'Unknown error'}`,
               threadID,
               messageID
             );
@@ -570,6 +568,7 @@ module.exports = {
           type: "editCaption"
         });
       }
+      /* // COMMENTED OUT: Edit images option
       else if (choice === "3") {
         // Edit Attached File
         await api.unsendMessage(Reply.messageID);
@@ -591,6 +590,7 @@ module.exports = {
           type: "editImages"
         });
       }
+      */
       else {
         return api.sendMessage('❌ Invalid choice. Please choose 1, 2, or 3', threadID, messageID);
       }
@@ -641,6 +641,7 @@ module.exports = {
         type: "overview"
       });
     }
+    /* // COMMENTED OUT: Edit images handler
     else if (type == "editImages") {
       // Clear existing images first
       postData.imageIds = [];
@@ -671,6 +672,7 @@ module.exports = {
         type: "overview"
       });
     }
+    */
   }
 };
 
