@@ -1,5 +1,6 @@
 const fs = require('fs-extra');
 const path = require('path');
+const axios = require('axios');
 
 module.exports = {
   config: {
@@ -235,19 +236,78 @@ module.exports = {
       return;
     }
 
-    async function uploadAttachments(attachments) {
-      let uploads = [];
-      for (const attachment of attachments) {
-        const form = {
-          file: attachment
-        };
-        uploads.push(api.httpPostFormData(
-          `https://www.facebook.com/profile/picture/upload/?profile_id=${botID}&photo_source=57&av=${botID}`,
-          form
-        ));
+    // Helper to upload images using the correct method
+    async function uploadImages(attachments) {
+      const uploadedIds = [];
+      const cacheDir = path.join(__dirname, 'cache');
+      
+      if (!fs.existsSync(cacheDir)) {
+        fs.mkdirSync(cacheDir, { recursive: true });
       }
-      uploads = await Promise.all(uploads);
-      return uploads;
+
+      for (const attachment of attachments) {
+        if (attachment.type !== "photo") continue;
+        
+        try {
+          const pathImage = path.join(cacheDir, `upload_${Date.now()}.png`);
+          
+          // Download image
+          const response = await axios.get(attachment.url, { responseType: 'arraybuffer' });
+          fs.writeFileSync(pathImage, Buffer.from(response.data));
+          
+          // Create form data for upload
+          const formData = new FormData();
+          formData.append('file', fs.createReadStream(pathImage));
+          formData.append('profile_id', botID);
+          formData.append('photo_source', '57');
+          formData.append('av', botID);
+          
+          // Use api.httpPostFormData if available, otherwise use the alternative
+          let uploadResult;
+          try {
+            // Try using httpPostFormData
+            uploadResult = await api.httpPostFormData(
+              `https://www.facebook.com/profile/picture/upload/?profile_id=${botID}&photo_source=57&av=${botID}`,
+              { file: fs.createReadStream(pathImage) }
+            );
+          } catch (err) {
+            // Alternative method using httpPost with FormData
+            const form = new FormData();
+            form.append('file', fs.createReadStream(pathImage));
+            form.append('profile_id', botID);
+            form.append('photo_source', '57');
+            form.append('av', botID);
+            
+            uploadResult = await new Promise((resolve, reject) => {
+              api.httpPost(
+                `https://www.facebook.com/profile/picture/upload/?profile_id=${botID}&photo_source=57&av=${botID}`,
+                form,
+                (err, res) => {
+                  if (err) reject(err);
+                  else resolve(res);
+                }
+              );
+            });
+          }
+          
+          let result = uploadResult;
+          if (typeof result === 'string') {
+            result = JSON.parse(result.replace('for (;;);', ''));
+          }
+          
+          if (result && result.payload && result.payload.fbid) {
+            uploadedIds.push(result.payload.fbid.toString());
+          }
+          
+          // Cleanup
+          try { fs.unlinkSync(pathImage); } catch(e) {}
+          
+        } catch (err) {
+          console.error('Upload error for image:', err);
+        }
+      }
+      
+      return uploadedIds;
     }
 
     // Helper to show overview
@@ -329,42 +389,13 @@ module.exports = {
     else if (type == "images") {
       // Process images if any
       if (body.trim().toLowerCase() != "skip" && attachments && attachments.length > 0) {
-        const allStreamFile = [];
-        const cacheDir = path.join(__dirname, 'cache');
-        const pathImage = path.join(cacheDir, 'imagePost.png');
-        
-        if (!fs.existsSync(cacheDir)) {
-          fs.mkdirSync(cacheDir, { recursive: true });
-        }
-
-        for (const attach of attachments) {
-          if (attach.type != "photo") continue;
-          try {
-            const axios = require('axios');
-            const getFile = (await axios.get(attach.url, { responseType: "arraybuffer" })).data;
-            fs.writeFileSync(pathImage, Buffer.from(getFile));
-            allStreamFile.push(fs.createReadStream(pathImage));
-          } catch (err) {
-            console.error('Error downloading image:', err);
-          }
-        }
-
-        if (allStreamFile.length > 0) {
-          const uploadFiles = await uploadAttachments(allStreamFile);
-          
-          for (let result of uploadFiles) {
-            if (typeof result == "string") {
-              result = JSON.parse(result.replace("for (;;);", ""));
-            }
-            if (result && result.payload && result.payload.fbid) {
-              const imageId = result.payload.fbid.toString();
-              postData.imageIds.push(imageId);
-              postData.formData.input.attachments.push({
-                "photo": {
-                  "id": imageId,
-                }
-              });
-            }
+        const imageIds = await uploadImages(attachments);
+        if (imageIds.length > 0) {
+          postData.imageIds = imageIds;
+          for (const id of imageIds) {
+            postData.formData.input.attachments.push({
+              "photo": { "id": id }
+            });
           }
         }
       }
@@ -437,7 +468,7 @@ module.exports = {
               if (fs.existsSync(cacheDir)) {
                 const files = fs.readdirSync(cacheDir);
                 for (const file of files) {
-                  if (file.includes('imagePost') || file.includes('videoPost')) {
+                  if (file.includes('upload_') || file.includes('imagePost') || file.includes('videoPost')) {
                     fs.unlinkSync(path.join(cacheDir, file));
                   }
                 }
@@ -598,42 +629,13 @@ module.exports = {
       postData.formData.input.attachments = [];
       
       if (body.trim().toLowerCase() !== "skip" && attachments && attachments.length > 0) {
-        const allStreamFile = [];
-        const cacheDir = path.join(__dirname, 'cache');
-        const pathImage = path.join(cacheDir, 'imagePost.png');
-        
-        if (!fs.existsSync(cacheDir)) {
-          fs.mkdirSync(cacheDir, { recursive: true });
-        }
-
-        for (const attach of attachments) {
-          if (attach.type != "photo") continue;
-          try {
-            const axios = require('axios');
-            const getFile = (await axios.get(attach.url, { responseType: "arraybuffer" })).data;
-            fs.writeFileSync(pathImage, Buffer.from(getFile));
-            allStreamFile.push(fs.createReadStream(pathImage));
-          } catch (err) {
-            console.error('Error downloading image:', err);
-          }
-        }
-
-        if (allStreamFile.length > 0) {
-          const uploadFiles = await uploadAttachments(allStreamFile);
-          
-          for (let result of uploadFiles) {
-            if (typeof result == "string") {
-              result = JSON.parse(result.replace("for (;;);", ""));
-            }
-            if (result && result.payload && result.payload.fbid) {
-              const imageId = result.payload.fbid.toString();
-              postData.imageIds.push(imageId);
-              postData.formData.input.attachments.push({
-                "photo": {
-                  "id": imageId,
-                }
-              });
-            }
+        const imageIds = await uploadImages(attachments);
+        if (imageIds.length > 0) {
+          postData.imageIds = imageIds;
+          for (const id of imageIds) {
+            postData.formData.input.attachments.push({
+              "photo": { "id": id }
+            });
           }
         }
       }
