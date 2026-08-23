@@ -134,7 +134,6 @@ module.exports = {
     }
 
     // If no arguments, start the interactive flow
-    // Store post data
     const postData = {
       formData: {
         input: {
@@ -219,10 +218,10 @@ module.exports = {
     return;
   },
 
-  onReply: async function ({ event, api, handleReply }) {
-    console.log('onReply triggered:', event.body);
+  handleReply: async function ({ api, event, handleReply, getText }) {
+    console.log('handleReply triggered:', event.body);
     
-    const { type, author, postData } = handleReply || {};
+    const { type, author, postData } = handleReply;
     const { threadID, messageID, senderID, attachments, body } = event;
     const botID = api.getCurrentUserID();
 
