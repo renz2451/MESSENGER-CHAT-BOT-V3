@@ -6,7 +6,7 @@ const sharp = require('sharp');
 module.exports = {
   config: {
     name: "createpost",
-    version: "2.5.0",
+    version: "2.6.0",
     author: "Renz",
     role: 2,
     usePrefix: true,
@@ -27,7 +27,7 @@ module.exports = {
     if (args && args.length > 0) {
       const content = args.join(' ');
       
-      const result = await createPost(api, content, "EVERYONE", []);
+      const result = await createPostUsingFCA(api, content, "EVERYONE", []);
       
       if (result.success) {
         return message.reply(
@@ -129,6 +129,9 @@ module.exports = {
             if (uploadData && uploadData.image_id) {
               uploadedIds.push(uploadData.image_id.toString());
               console.log('Image uploaded! ID:', uploadData.image_id);
+            } else if (uploadData && uploadData.fbid) {
+              uploadedIds.push(uploadData.fbid.toString());
+              console.log('Image uploaded! ID:', uploadData.fbid);
             }
           }
           
@@ -254,7 +257,7 @@ module.exports = {
         
         const creatingMsg = await api.sendMessage('⏳ Creating your post...', threadID);
         
-        const result = await createPost(
+        const result = await createPostUsingFCA(
           api,
           postData.caption || "",
           postData.audience || "FRIENDS",
@@ -417,208 +420,163 @@ module.exports = {
   }
 };
 
-// Helper function to create a post using different methods
-async function createPost(api, caption, privacy, imageIds) {
+// Helper function to create a post using FCA's createPost
+async function createPostUsingFCA(api, caption, privacy, imageIds) {
   try {
-    const botID = api.getCurrentUserID();
+    console.log('Creating post using FCA createPost...');
+    console.log('Caption:', caption);
+    console.log('Privacy:', privacy);
+    console.log('Images:', imageIds);
     
-    // Try Method 1: Using the feed publish endpoint
-    try {
-      console.log('Method 1: Using feed publish...');
+    // Check if api.createPost exists
+    if (typeof api.createPost === 'function') {
+      console.log('Using api.createPost directly...');
       
-      const form = {
-        message: caption || "",
-        profile_id: botID,
-        privacy: privacy || "EVERYONE",
-        source: "www"
+      // Build the message object
+      const msg = {
+        body: caption || "",
+        baseState: privacy === "EVERYONE" ? 1 : privacy === "FRIENDS" ? 2 : 3
       };
       
-      // Add image IDs if present
+      // Add attachments if there are images
       if (imageIds && imageIds.length > 0) {
-        form.attached_media = imageIds.map(id => `{"media_fbid":"${id}"}`).join(',');
+        // For images, we need to use the attachment upload method
+        // The createPost function handles this internally
+        msg.attachment = imageIds.map(id => ({
+          type: "photo",
+          ID: id
+        }));
       }
       
-      const result = await new Promise((resolve, reject) => {
-        api.httpPost('https://www.facebook.com/feed/publish.php', form, (err, res) => {
-          if (err) reject(err);
-          else resolve(res);
-        });
-      });
-      
-      let data = result;
-      if (typeof data === 'string') {
-        try {
-          data = JSON.parse(data);
-        } catch (e) {
-          // If not JSON, try to extract post ID from HTML
-          const postIdMatch = data.match(/story_fbid=([^&"]+)/);
-          if (postIdMatch) {
-            return {
-              success: true,
-              postID: postIdMatch[1],
-              url: `https://www.facebook.com/${postIdMatch[1]}`
-            };
+      // Call createPost
+      const url = await new Promise((resolve, reject) => {
+        api.createPost(msg, (err, url) => {
+          if (err) {
+            console.log('createPost error:', err);
+            reject(err);
+          } else {
+            console.log('createPost success:', url);
+            resolve(url);
           }
-        }
-      }
-      
-      if (data && data.payload && data.payload.post_id) {
-        return {
-          success: true,
-          postID: data.payload.post_id,
-          url: `https://www.facebook.com/${data.payload.post_id}`
-        };
-      }
-      
-      console.log('Method 1 failed, trying Method 2...');
-    } catch (err) {
-      console.log('Method 1 error:', err.message);
-    }
-    
-    // Try Method 2: Using Graph API with different doc_id
-    try {
-      console.log('Method 2: Using Graph API...');
-      
-      const uuid = getGUID();
-      const attachments = imageIds.map(id => ({
-        "photo": { "id": id }
-      }));
-      
-      const form = {
-        av: botID,
-        fb_api_req_friendly_name: "ComposerStoryCreateMutation",
-        fb_api_caller_class: "RelayModern",
-        doc_id: "6255089511280268", // Different doc_id
-        variables: JSON.stringify({
-          input: {
-            composer_entry_point: "inline_composer",
-            composer_source_surface: "timeline",
-            idempotence_token: uuid + "_FEED",
-            source: "WWW",
-            attachments: attachments,
-            audience: {
-              privacy: {
-                allow: [],
-                base_state: privacy || "EVERYONE",
-                deny: [],
-                tag_expansion_state: "UNSPECIFIED"
-              }
-            },
-            message: {
-              ranges: [],
-              text: caption || ""
-            },
-            with_tags_ids: [],
-            inline_activities: [],
-            explicit_place_id: "0",
-            text_format_preset_id: "0",
-            logging: {
-              composer_session_id: uuid
-            },
-            tracking: [null],
-            actor_id: botID,
-            client_mutation_id: Math.floor(Math.random() * 17)
-          },
-          displayCommentsFeedbackContext: null,
-          displayCommentsContextEnableComment: null,
-          displayCommentsContextIsAdPreview: null,
-          displayCommentsContextIsAggregatedShare: null,
-          displayCommentsContextIsStorySet: null,
-          feedLocation: "TIMELINE",
-          feedbackSource: 0,
-          focusCommentID: null,
-          gridMediaWidth: 230,
-          groupID: null,
-          scale: 3,
-          privacySelectorRenderLocation: "COMET_STREAM",
-          renderLocation: "timeline",
-          useDefaultActor: false,
-          inviteShortLinkKey: null,
-          isFeed: false,
-          isFundraiser: false,
-          isFunFactPost: false,
-          isGroup: false,
-          isTimeline: true,
-          isSocialLearning: false,
-          isPageNewsFeed: false,
-          isProfileReviews: false,
-          isWorkSharedDraft: false,
-          UFI2CommentsProvider_commentsKey: "ProfileCometTimelineRoute",
-          hashtag: null,
-          canUserManageOffers: false
-        })
-      };
-      
-      const result = await new Promise((resolve, reject) => {
-        api.httpPost('https://www.facebook.com/api/graphql/', form, (err, res) => {
-          if (err) reject(err);
-          else resolve(res);
         });
       });
       
-      let data = result;
-      if (typeof data === 'string') {
-        data = JSON.parse(data.replace('for (;;);', ''));
-      }
-      
-      if (data.errors) {
-        console.log('Method 2 errors:', data.errors);
-        throw new Error(data.errors[0]?.message || 'GraphQL error');
-      }
-      
-      const postID = data.data?.story_create?.story?.legacy_story_hideable_id;
-      const url = data.data?.story_create?.story?.url;
-      
-      if (postID) {
+      if (url) {
+        // Extract post ID from URL
+        const postID = url.split('/').pop() || url;
         return {
           success: true,
           postID: postID,
-          url: url || `https://www.facebook.com/${postID}`
+          url: url
         };
       }
-      
-      console.log('Method 2 failed');
-    } catch (err) {
-      console.log('Method 2 error:', err.message);
     }
     
-    // Try Method 3: Using simple status update
-    try {
-      console.log('Method 3: Simple status update...');
-      
-      const form = {
-        message: caption || "",
-        profile_id: botID,
-        privacy: privacy || "EVERYONE"
-      };
-      
-      const result = await new Promise((resolve, reject) => {
-        api.httpPost('https://www.facebook.com/ajax/feed/publish.php', form, (err, res) => {
-          if (err) reject(err);
-          else resolve(res);
-        });
-      });
-      
-      let data = result;
-      if (typeof data === 'string') {
-        data = JSON.parse(data.replace('for (;;);', ''));
-      }
-      
-      if (data && data.payload && data.payload.post_id) {
-        return {
-          success: true,
-          postID: data.payload.post_id,
-          url: `https://www.facebook.com/${data.payload.post_id}`
-        };
-      }
-    } catch (err) {
-      console.log('Method 3 error:', err.message);
-    }
+    // If api.createPost doesn't exist, try the manual method
+    console.log('api.createPost not available, trying alternative...');
     
-    return {
-      success: false,
-      error: 'All post creation methods failed. The bot account may be restricted from posting.'
+    // Try using the manual GraphQL method as fallback
+    const uuid = getGUID();
+    const botID = api.getCurrentUserID();
+    
+    const attachments = imageIds.map(id => ({
+      "photo": { "id": id }
+    }));
+    
+    const form = {
+      av: botID,
+      fb_api_req_friendly_name: "ComposerStoryCreateMutation",
+      fb_api_caller_class: "RelayModern",
+      doc_id: "6255089511280268",
+      variables: JSON.stringify({
+        input: {
+          composer_entry_point: "inline_composer",
+          composer_source_surface: "timeline",
+          idempotence_token: uuid + "_FEED",
+          source: "WWW",
+          attachments: attachments,
+          audience: {
+            privacy: {
+              allow: [],
+              base_state: privacy || "EVERYONE",
+              deny: [],
+              tag_expansion_state: "UNSPECIFIED"
+            }
+          },
+          message: {
+            ranges: [],
+            text: caption || ""
+          },
+          with_tags_ids: [],
+          inline_activities: [],
+          explicit_place_id: "0",
+          text_format_preset_id: "0",
+          logging: {
+            composer_session_id: uuid
+          },
+          tracking: [null],
+          actor_id: botID,
+          client_mutation_id: Math.floor(Math.random() * 17)
+        },
+        displayCommentsFeedbackContext: null,
+        displayCommentsContextEnableComment: null,
+        displayCommentsContextIsAdPreview: null,
+        displayCommentsContextIsAggregatedShare: null,
+        displayCommentsContextIsStorySet: null,
+        feedLocation: "TIMELINE",
+        feedbackSource: 0,
+        focusCommentID: null,
+        gridMediaWidth: 230,
+        groupID: null,
+        scale: 3,
+        privacySelectorRenderLocation: "COMET_STREAM",
+        renderLocation: "timeline",
+        useDefaultActor: false,
+        inviteShortLinkKey: null,
+        isFeed: false,
+        isFundraiser: false,
+        isFunFactPost: false,
+        isGroup: false,
+        isTimeline: true,
+        isSocialLearning: false,
+        isPageNewsFeed: false,
+        isProfileReviews: false,
+        isWorkSharedDraft: false,
+        UFI2CommentsProvider_commentsKey: "ProfileCometTimelineRoute",
+        hashtag: null,
+        canUserManageOffers: false
+      })
     };
+    
+    const result = await new Promise((resolve, reject) => {
+      api.httpPost('https://www.facebook.com/api/graphql/', form, (err, res) => {
+        if (err) reject(err);
+        else resolve(res);
+      });
+    });
+    
+    let data = result;
+    if (typeof data === 'string') {
+      data = JSON.parse(data.replace('for (;;);', ''));
+    }
+    
+    if (data.errors) {
+      console.log('GraphQL errors:', data.errors);
+      throw new Error(data.errors[0]?.message || 'GraphQL error');
+    }
+    
+    const postID = data.data?.story_create?.story?.legacy_story_hideable_id;
+    const url = data.data?.story_create?.story?.url;
+    
+    if (postID) {
+      return {
+        success: true,
+        postID: postID,
+        url: url || `https://www.facebook.com/${postID}`
+      };
+    }
+    
+    throw new Error('No post ID returned');
     
   } catch (error) {
     console.error('Create post error:', error);
