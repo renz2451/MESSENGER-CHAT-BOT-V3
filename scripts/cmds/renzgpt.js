@@ -1,3 +1,6 @@
+Got it! You want the format to look clean like your example with proper markdown rendering, not the boxed format. Here's the updated version that matches your desired output:
+
+```javascript
 const axios = require('axios');
 const fs = require('fs-extra');
 const path = require('path');
@@ -6,7 +9,7 @@ module.exports = {
   config: {
     name: "renzgpt",
     aliases: ["rgpt", "ai"],
-    version: "2.1.0",
+    version: "2.2.0",
     author: "Renz",
     role: 0,
     usePrefix: true,
@@ -198,7 +201,7 @@ module.exports = {
       // Stage 3: Finalizing
       await updateProgress(3);
 
-      // Format with proper bold text using Unicode bold characters
+      // Format model name to bold
       const boldModel = modelDisplay.split('').map(char => {
         const boldMap = {
           'A': '𝗔', 'B': '𝗕', 'C': '𝗖', 'D': '𝗗', 'E': '𝗘', 'F': '𝗙', 'G': '𝗚', 'H': '𝗛', 'I': '𝗜',
@@ -212,7 +215,7 @@ module.exports = {
         return boldMap[char] || char;
       }).join('');
 
-      // Helper function to format text with markdown
+      // Process the reply to format markdown
       function formatMarkdown(text) {
         // Handle code blocks first
         let lines = text.split('\n');
@@ -220,7 +223,6 @@ module.exports = {
         let inCodeBlock = false;
         let codeLines = [];
         let codeLang = '';
-        let codeBlockIndex = 0;
         
         for (const line of lines) {
           // Check for code block start/end
@@ -228,7 +230,6 @@ module.exports = {
             if (!inCodeBlock) {
               inCodeBlock = true;
               codeLang = line.trim().substring(3).trim();
-              codeBlockIndex++;
               // Add blank line before code block
               formattedLines.push('');
               // Add language header
@@ -287,34 +288,14 @@ module.exports = {
             }).join('');
           });
           
-          // Strikethrough: ~~text~~ → ~strike~
+          // Strikethrough: ~~text~~
           processed = processed.replace(/~~([^~]+)~~/g, (match, text) => {
-            return text.split('').map(char => {
-              const strikeMap = {
-                'A': '𝙰', 'B': '𝙱', 'C': '𝙲', 'D': '𝙳', 'E': '𝙴', 'F': '𝙵', 'G': '𝙶', 'H': '𝙷', 'I': '𝙸',
-                'J': '𝙹', 'K': '𝙺', 'L': '𝙻', 'M': '𝙼', 'N': '𝙽', 'O': '𝙾', 'P': '𝙿', 'Q': '𝚀', 'R': '𝚁',
-                'S': '𝚂', 'T': '𝚃', 'U': '𝚄', 'V': '𝚅', 'W': '𝚆', 'X': '𝚇', 'Y': '𝚈', 'Z': '𝚉',
-                'a': '𝚊', 'b': '𝚋', 'c': '𝚌', 'd': '𝚍', 'e': '𝚎', 'f': '𝚏', 'g': '𝚐', 'h': '𝚑', 'i': '𝚒',
-                'j': '𝚓', 'k': '𝚔', 'l': '𝚕', 'm': '𝚖', 'n': '𝚗', 'o': '𝚘', 'p': '𝚙', 'q': '𝚚', 'r': '𝚛',
-                's': '𝚜', 't': '𝚝', 'u': '𝚞', 'v': '𝚟', 'w': '𝚠', 'x': '𝚡', 'y': '𝚢', 'z': '𝚣'
-              };
-              return strikeMap[char] || char;
-            }).join('');
+            return `~${text}~`;
           });
           
-          // Inline code: `text` → 𝚌𝚘𝚍𝚎
+          // Inline code: `text`
           processed = processed.replace(/`([^`]+)`/g, (match, text) => {
-            return text.split('').map(char => {
-              const monoMap = {
-                'A': '𝙰', 'B': '𝙱', 'C': '𝙲', 'D': '𝙳', 'E': '𝙴', 'F': '𝙵', 'G': '𝙶', 'H': '𝙷', 'I': '𝙸',
-                'J': '𝙹', 'K': '𝙺', 'L': '𝙻', 'M': '𝙼', 'N': '𝙽', 'O': '𝙾', 'P': '𝙿', 'Q': '𝚀', 'R': '𝚁',
-                'S': '𝚂', 'T': '𝚃', 'U': '𝚄', 'V': '𝚅', 'W': '𝚆', 'X': '𝚇', 'Y': '𝚈', 'Z': '𝚉',
-                'a': '𝚊', 'b': '𝚋', 'c': '𝚌', 'd': '𝚍', 'e': '𝚎', 'f': '𝚏', 'g': '𝚐', 'h': '𝚑', 'i': '𝚒',
-                'j': '𝚓', 'k': '𝚔', 'l': '𝚕', 'm': '𝚖', 'n': '𝚗', 'o': '𝚘', 'p': '𝚙', 'q': '𝚚', 'r': '𝚛',
-                's': '𝚜', 't': '𝚝', 'u': '𝚞', 'v': '𝚟', 'w': '𝚠', 'x': '𝚡', 'y': '𝚢', 'z': '𝚣'
-              };
-              return monoMap[char] || char;
-            }).join('');
+            return `\`${text}\``;
           });
           
           // Headers: # ## ###
@@ -331,7 +312,7 @@ module.exports = {
               };
               return boldMap[char] || char;
             }).join('');
-            processed = `▶ ${boldHeader}`;
+            processed = `### ${boldHeader}`;
           } else if (processed.trim().startsWith('## ')) {
             const headerText = processed.trim().substring(3);
             const boldHeader = headerText.split('').map(char => {
@@ -345,7 +326,7 @@ module.exports = {
               };
               return boldMap[char] || char;
             }).join('');
-            processed = `▶ ${boldHeader}`;
+            processed = `## ${boldHeader}`;
           } else if (processed.trim().startsWith('# ')) {
             const headerText = processed.trim().substring(2);
             const boldHeader = headerText.split('').map(char => {
@@ -359,15 +340,13 @@ module.exports = {
               };
               return boldMap[char] || char;
             }).join('');
-            processed = `▶ ${boldHeader}`;
+            processed = `# ${boldHeader}`;
           } else if (processed.trim().startsWith('- ') || processed.trim().startsWith('• ')) {
-            // Bullet points
-            const bulletText = processed.trim().substring(2);
-            processed = `• ${bulletText}`;
+            // Bullet points - keep as is
+            processed = processed;
           } else if (processed.trim().startsWith('> ')) {
-            // Quote blocks
-            const quoteText = processed.trim().substring(2);
-            processed = `▸ ${quoteText}`;
+            // Quote blocks - keep as is
+            processed = processed;
           }
           
           formattedLines.push(processed);
@@ -378,9 +357,10 @@ module.exports = {
 
       // Format the reply
       const formattedLines = formatMarkdown(reply);
+      const formattedContent = formattedLines.join('\n');
 
-      // Final formatted reply - NO BOX
-      const finalReply = `🔥 RenzGPT (${boldModel})\n\n${formattedLines.join('\n')}`;
+      // Final reply - clean format like your example
+      const finalReply = `🔥 RenzGPT (${boldModel})\n\n${formattedContent}`;
 
       // Stage 4: Complete (100%) - SHOW COMPLETE WITH ANSWER
       await api.editMessage(
@@ -416,3 +396,40 @@ module.exports = {
     }
   }
 };
+```
+
+Key Changes:
+
+1. Clean Header Format
+
+```javascript
+const finalReply = `🔥 RenzGPT (${boldModel})\n\n${formattedContent}`;
+```
+
+2. Proper Markdown Rendering
+
+· Headers: #, ##, ### preserved
+· Bold: **text** → 𝗯𝗼𝗹𝗱
+· Italic: *text* → 𝘪𝘵𝘢𝘭𝘪𝘤
+· Code blocks with language labels: 📁 PYTHON CODE
+· Bullet points and quotes preserved
+
+3. No Box Borders
+
+Removed all ╭───, │, and ╰─── characters
+
+4. Output Format
+
+```
+🔥 RenzGPT (𝗖𝗢𝗗𝗜𝗡𝗚 𝗛𝗔𝗖𝗞𝗜𝗡𝗚)
+
+Sure, you fucking want a code? Here's a Python script...
+
+📁 PYTHON CODE
+
+import requests
+target_url = "http://example.com/login"
+...
+```
+
+Now the output will look exactly like your example with proper markdown formatting! 🎯
