@@ -6,8 +6,8 @@ const GIFEncoder = require("gif-encoder-2");
 module.exports = {
   config: {
     name: "wheel",
-    version: "3.0",
-    author: "xalman",
+    version: "4.0",
+    author: "Renz",
     role: 0,
     countDown: 5,
     category: "GAMES",
@@ -79,15 +79,26 @@ module.exports = {
       return message.reply(`🚫 Daily limit reached (${maxSpins} spins)`);
     }
 
+    // ===== FAIRER SEGMENTS WITH NEGATIVE MULTIPLIERS =====
     const segments = [
-      { label: "1x", value: 1, weight: 0.31, color: "#FF6B6B" },
-      { label: "2x", value: 2, weight: 0.28, color: "#4ECDC4" },
-      { label: "3x", value: 3, weight: 0.20, color: "#FFE66D" },
-      { label: "5x", value: 5, weight: 0.12, color: "#A8E6CF" },
-      { label: "7x", value: 7, weight: 0.06, color: "#FF8A5C" },
-      { label: "10x", value: 10, weight: 0.03, color: "#6C5B7B" }
+      // Negative multipliers (LOSS)
+      { label: "x0", value: 0, weight: 0.15, color: "#FF0000", emoji: "💀" },      // Lose everything
+      { label: "-2x", value: -2, weight: 0.12, color: "#FF4444", emoji: "😱" },    // Lose 2x bet
+      { label: "-1x", value: -1, weight: 0.15, color: "#FF6666", emoji: "😢" },    // Lose 1x bet
+      
+      // Neutral/Small win
+      { label: "0.5x", value: 0.5, weight: 0.15, color: "#FFE66D", emoji: "😅" }, // Win half
+      { label: "1x", value: 1, weight: 0.18, color: "#4ECDC4", emoji: "🙂" },      // Break even
+      
+      // Positive multipliers (WIN)
+      { label: "2x", value: 2, weight: 0.10, color: "#66BB6A", emoji: "😊" },
+      { label: "3x", value: 3, weight: 0.07, color: "#43A047", emoji: "🎉" },
+      { label: "5x", value: 5, weight: 0.05, color: "#2E7D32", emoji: "🎊" },
+      { label: "10x", value: 10, weight: 0.02, color: "#1B5E20", emoji: "🤯" },
+      { label: "25x", value: 25, weight: 0.01, color: "#FFD700", emoji: "🌟" }    // Jackpot!
     ];
 
+    // Pick random segment based on weights
     const rand = Math.random();
     let cumulative = 0;
     let resultIndex = 0;
@@ -101,19 +112,54 @@ module.exports = {
 
     const resultSegment = segments[resultIndex];
     const multiplier = resultSegment.value;
-    const win = multiplier > 1;
-    const bonus = win ? betAmount * multiplier : 0;
-    const finalMoney = win ? currentMoney + bonus : currentMoney - betAmount;
+    
+    // Calculate win/loss
+    let bonus = 0;
+    let win = false;
+    
+    if (multiplier < 0) {
+      // Negative multiplier - LOSE money
+      bonus = betAmount * Math.abs(multiplier);
+      win = false;
+    } else if (multiplier === 0) {
+      // Lose everything
+      bonus = betAmount;
+      win = false;
+    } else {
+      // Positive multiplier - WIN money
+      bonus = betAmount * multiplier;
+      win = true;
+    }
+    
+    const finalMoney = win ? currentMoney + bonus : currentMoney - bonus;
 
+    // Update user balance
     userData.money = finalMoney;
     await usersData.set(senderID, userData);
 
     global.wheelLimit[senderID].count++;
 
-    const status = win ? `WIN ${multiplier}x 🎉` : "LOSE 💀";
+    // Status message
+    let status = "";
+    let resultText = "";
+    
+    if (multiplier < 0) {
+      status = `LOSS ${Math.abs(multiplier)}x 💀`;
+      resultText = `Lost ${formatMoney(bonus)}$`;
+    } else if (multiplier === 0) {
+      status = "BUST 💀";
+      resultText = `Lost ${formatMoney(bonus)}$`;
+    } else if (multiplier === 1) {
+      status = "BREAK EVEN 🙂";
+      resultText = `Bet returned: ${formatMoney(betAmount)}$`;
+    } else {
+      status = `WIN ${multiplier}x 🎉`;
+      resultText = `Won ${formatMoney(bonus)}$`;
+    }
 
     const sent = await message.reply("🌀 Spinning the wheel...");
 
+    // ===== GENERATE GIF =====
     const W = 600;
     const H = 600;
     const centerX = W / 2;
@@ -134,9 +180,11 @@ module.exports = {
       const canvas = Canvas.createCanvas(W, H);
       const ctx = canvas.getContext("2d");
 
+      // Background
       ctx.fillStyle = "#0a0a1a";
       ctx.fillRect(0, 0, W, H);
 
+      // Stars
       for (let i = 0; i < 80; i++) {
         ctx.beginPath();
         ctx.arc(Math.random() * W, Math.random() * H, Math.random() * 2 + 0.5, 0, 2 * Math.PI);
@@ -144,12 +192,14 @@ module.exports = {
         ctx.fill();
       }
 
+      // Rotation animation
       const progress = f / frames;
       const eased = 1 - Math.pow(1 - progress, 3);
       const totalRotation = (2 * Math.PI) * 3;
       const finalAngle = -Math.PI / 2 - (resultIndex * segmentAngle + segmentAngle / 2);
       const angle = eased * totalRotation + finalAngle;
 
+      // Draw segments
       for (let i = 0; i < totalSegments; i++) {
         const start = i * segmentAngle + angle;
         const end = start + segmentAngle;
@@ -168,20 +218,26 @@ module.exports = {
         ctx.lineWidth = 4;
         ctx.stroke();
 
+        // Draw label
         const midAngle = start + segmentAngle / 2;
         const textX = centerX + Math.cos(midAngle) * (radius * 0.65);
         const textY = centerY + Math.sin(midAngle) * (radius * 0.65);
 
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.font = "bold 40px Arial";
+        ctx.font = "bold 36px Arial";
         ctx.fillStyle = "#ffffff";
         ctx.shadowBlur = 15;
         ctx.shadowColor = "#000000";
-        ctx.fillText(segments[i].label, textX, textY);
+        
+        // Show emoji + label
+        ctx.fillText(segments[i].emoji, textX, textY - 20);
+        ctx.font = "bold 32px Arial";
+        ctx.fillText(segments[i].label, textX, textY + 30);
         ctx.shadowBlur = 0;
       }
 
+      // Center circle
       ctx.beginPath();
       ctx.arc(centerX, centerY, 28, 0, 2 * Math.PI);
       ctx.shadowBlur = 25;
@@ -193,6 +249,7 @@ module.exports = {
       ctx.lineWidth = 4;
       ctx.stroke();
 
+      // Arrow pointer
       ctx.fillStyle = "#ff0000";
       ctx.shadowBlur = 20;
       ctx.shadowColor = "#ff0000";
@@ -204,6 +261,7 @@ module.exports = {
       ctx.fill();
       ctx.shadowBlur = 0;
 
+      // Outer glow
       ctx.beginPath();
       ctx.arc(centerX, centerY, radius + 14, 0, 2 * Math.PI);
       ctx.shadowBlur = 40;
@@ -219,6 +277,7 @@ module.exports = {
     encoder.finish();
     const buffer = encoder.out.getData();
 
+    // Save and send GIF
     const cacheDir = path.join(__dirname, "cache");
     if (!fs.existsSync(cacheDir)) fs.mkdirSync(cacheDir, { recursive: true });
     const filePath = path.join(cacheDir, `wheel_${Date.now()}.gif`);
@@ -228,9 +287,9 @@ module.exports = {
 
     const msg = `🎡 𝗪𝗛𝗘𝗘𝗟 𝗦𝗣𝗜𝗡
 
-${win ? "🎉" : "💀"} ${status}
-🎯 Result: ${resultSegment.label}
-💰 ${win ? "Won: " + formatMoney(bonus) : "Lost: " + formatMoney(betAmount)}$
+${status}
+${resultSegment.emoji} Result: ${resultSegment.label}
+💰 ${resultText}
 💳 Balance: ${formatMoney(finalMoney)}$
 📊 Usage: ${global.wheelLimit[senderID].count}/${maxSpins}`;
 
