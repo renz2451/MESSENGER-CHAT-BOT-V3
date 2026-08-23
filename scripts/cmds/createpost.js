@@ -19,9 +19,9 @@ module.exports = {
     const { threadID, messageID, senderID } = event;
     const uuid = getGUID();
     
-    // Initialize handleReply if it doesn't exist
-    if (!global.client) global.client = {};
-    if (!global.client.handleReply) global.client.handleReply = [];
+    // Initialize onReply if it doesn't exist
+    if (!global.GoatBot) global.GoatBot = {};
+    if (!global.GoatBot.onReply) global.GoatBot.onReply = new Map();
     
     // If there are arguments, use them as the post content
     if (args && args.length > 0) {
@@ -205,11 +205,10 @@ module.exports = {
       threadID
     );
 
-    // Store the reply handler
-    if (!global.client.handleReply) global.client.handleReply = [];
-    global.client.handleReply.push({
-      name: this.config.name,
-      messageID: msg.messageID,
+    // Store the reply handler in GoatBot.onReply (Map)
+    if (!global.GoatBot.onReply) global.GoatBot.onReply = new Map();
+    global.GoatBot.onReply.set(msg.messageID, {
+      commandName: this.config.name,
       author: senderID,
       postData: postData,
       type: "whoSee"
@@ -218,15 +217,16 @@ module.exports = {
     return;
   },
 
-  handleReply: async function ({ api, event, handleReply, getText }) {
-    console.log('handleReply triggered:', event.body);
+  onReply: async function ({ api, event, Reply, getLang }) {
+    console.log('onReply triggered:', event.body);
     
-    const { type, author, postData } = handleReply;
+    // Extract data from Reply object
+    const { author, postData, type } = Reply;
     const { threadID, messageID, senderID, attachments, body } = event;
     const botID = api.getCurrentUserID();
 
-    if (!handleReply) {
-      console.log('No handleReply found');
+    if (!Reply) {
+      console.log('No Reply found');
       return;
     }
 
@@ -286,7 +286,7 @@ module.exports = {
       postData.formData.input.audience.privacy.base_state = postData.audience;
       
       // Unsend the previous message
-      await api.unsendMessage(handleReply.messageID);
+      await api.unsendMessage(Reply.messageID);
       
       const msg = await api.sendMessage(
         `👥 Audience: ${postData.audience}\n\n📝 Enter your caption (or reply "skip" to ignore)`,
@@ -294,10 +294,9 @@ module.exports = {
       );
 
       // Store the next reply handler
-      if (!global.client.handleReply) global.client.handleReply = [];
-      global.client.handleReply.push({
-        name: this.config.name,
-        messageID: msg.messageID,
+      if (!global.GoatBot.onReply) global.GoatBot.onReply = new Map();
+      global.GoatBot.onReply.set(msg.messageID, {
+        commandName: this.config.name,
         author: senderID,
         postData: postData,
         type: "caption"
@@ -311,7 +310,7 @@ module.exports = {
       }
       
       // Unsend the previous message
-      await api.unsendMessage(handleReply.messageID);
+      await api.unsendMessage(Reply.messageID);
       
       const msg = await api.sendMessage(
         `📝 Caption: ${postData.caption || "(Empty)"}\n\n🖼️ Send image(s) or reply "skip" to ignore`,
@@ -319,10 +318,9 @@ module.exports = {
       );
 
       // Store the next reply handler
-      if (!global.client.handleReply) global.client.handleReply = [];
-      global.client.handleReply.push({
-        name: this.config.name,
-        messageID: msg.messageID,
+      if (!global.GoatBot.onReply) global.GoatBot.onReply = new Map();
+      global.GoatBot.onReply.set(msg.messageID, {
+        commandName: this.config.name,
         author: senderID,
         postData: postData,
         type: "images"
@@ -372,17 +370,16 @@ module.exports = {
       }
 
       // Unsend the previous message
-      await api.unsendMessage(handleReply.messageID);
+      await api.unsendMessage(Reply.messageID);
       
       // Show overview
       const overview = showOverview(postData);
       const msg = await api.sendMessage(overview, threadID);
 
       // Store the next reply handler
-      if (!global.client.handleReply) global.client.handleReply = [];
-      global.client.handleReply.push({
-        name: this.config.name,
-        messageID: msg.messageID,
+      if (!global.GoatBot.onReply) global.GoatBot.onReply = new Map();
+      global.GoatBot.onReply.set(msg.messageID, {
+        commandName: this.config.name,
         author: senderID,
         postData: postData,
         type: "overview"
@@ -393,17 +390,16 @@ module.exports = {
       
       if (choice === "1") {
         // Edit
-        await api.unsendMessage(handleReply.messageID);
+        await api.unsendMessage(Reply.messageID);
         
         const msg = await api.sendMessage(
           `✏️ What do you want to edit?\n\n1️⃣ Audience\n2️⃣ Caption\n3️⃣ Attached File`,
           threadID
         );
         
-        if (!global.client.handleReply) global.client.handleReply = [];
-        global.client.handleReply.push({
-          name: this.config.name,
-          messageID: msg.messageID,
+        if (!global.GoatBot.onReply) global.GoatBot.onReply = new Map();
+        global.GoatBot.onReply.set(msg.messageID, {
+          commandName: this.config.name,
           author: senderID,
           postData: postData,
           type: "editChoice"
@@ -411,7 +407,7 @@ module.exports = {
       }
       else if (choice === "2") {
         // Confirm - Create the post
-        await api.unsendMessage(handleReply.messageID);
+        await api.unsendMessage(Reply.messageID);
         
         const creatingMsg = await api.sendMessage('⏳ Creating your post...', threadID);
         
@@ -481,7 +477,7 @@ module.exports = {
       }
       else if (choice === "3") {
         // Cancel
-        await api.unsendMessage(handleReply.messageID);
+        await api.unsendMessage(Reply.messageID);
         return api.sendMessage('❌ Post creation cancelled.', threadID, messageID);
       }
       else {
@@ -493,17 +489,16 @@ module.exports = {
       
       if (choice === "1") {
         // Edit Audience
-        await api.unsendMessage(handleReply.messageID);
+        await api.unsendMessage(Reply.messageID);
         
         const msg = await api.sendMessage(
           `📝 Choose who can see this post:\n\n1️⃣ Everyone\n2️⃣ Friends\n3️⃣ Only Me`,
           threadID
         );
         
-        if (!global.client.handleReply) global.client.handleReply = [];
-        global.client.handleReply.push({
-          name: this.config.name,
-          messageID: msg.messageID,
+        if (!global.GoatBot.onReply) global.GoatBot.onReply = new Map();
+        global.GoatBot.onReply.set(msg.messageID, {
+          commandName: this.config.name,
           author: senderID,
           postData: postData,
           type: "editAudience"
@@ -511,17 +506,16 @@ module.exports = {
       }
       else if (choice === "2") {
         // Edit Caption
-        await api.unsendMessage(handleReply.messageID);
+        await api.unsendMessage(Reply.messageID);
         
         const msg = await api.sendMessage(
           `📝 Enter new caption (or reply "skip" to keep current)`,
           threadID
         );
         
-        if (!global.client.handleReply) global.client.handleReply = [];
-        global.client.handleReply.push({
-          name: this.config.name,
-          messageID: msg.messageID,
+        if (!global.GoatBot.onReply) global.GoatBot.onReply = new Map();
+        global.GoatBot.onReply.set(msg.messageID, {
+          commandName: this.config.name,
           author: senderID,
           postData: postData,
           type: "editCaption"
@@ -529,7 +523,7 @@ module.exports = {
       }
       else if (choice === "3") {
         // Edit Attached File
-        await api.unsendMessage(handleReply.messageID);
+        await api.unsendMessage(Reply.messageID);
         
         // Clear existing images
         postData.imageIds = [];
@@ -540,10 +534,9 @@ module.exports = {
           threadID
         );
         
-        if (!global.client.handleReply) global.client.handleReply = [];
-        global.client.handleReply.push({
-          name: this.config.name,
-          messageID: msg.messageID,
+        if (!global.GoatBot.onReply) global.GoatBot.onReply = new Map();
+        global.GoatBot.onReply.set(msg.messageID, {
+          commandName: this.config.name,
           author: senderID,
           postData: postData,
           type: "editImages"
@@ -567,15 +560,14 @@ module.exports = {
       postData.audience = privacyMap[body.trim()];
       postData.formData.input.audience.privacy.base_state = postData.audience;
       
-      await api.unsendMessage(handleReply.messageID);
+      await api.unsendMessage(Reply.messageID);
       
       const overview = showOverview(postData);
       const msg = await api.sendMessage(overview, threadID);
       
-      if (!global.client.handleReply) global.client.handleReply = [];
-      global.client.handleReply.push({
-        name: this.config.name,
-        messageID: msg.messageID,
+      if (!global.GoatBot.onReply) global.GoatBot.onReply = new Map();
+      global.GoatBot.onReply.set(msg.messageID, {
+        commandName: this.config.name,
         author: senderID,
         postData: postData,
         type: "overview"
@@ -587,15 +579,14 @@ module.exports = {
         postData.formData.input.message.text = body;
       }
       
-      await api.unsendMessage(handleReply.messageID);
+      await api.unsendMessage(Reply.messageID);
       
       const overview = showOverview(postData);
       const msg = await api.sendMessage(overview, threadID);
       
-      if (!global.client.handleReply) global.client.handleReply = [];
-      global.client.handleReply.push({
-        name: this.config.name,
-        messageID: msg.messageID,
+      if (!global.GoatBot.onReply) global.GoatBot.onReply = new Map();
+      global.GoatBot.onReply.set(msg.messageID, {
+        commandName: this.config.name,
         author: senderID,
         postData: postData,
         type: "overview"
@@ -647,15 +638,14 @@ module.exports = {
         }
       }
       
-      await api.unsendMessage(handleReply.messageID);
+      await api.unsendMessage(Reply.messageID);
       
       const overview = showOverview(postData);
       const msg = await api.sendMessage(overview, threadID);
       
-      if (!global.client.handleReply) global.client.handleReply = [];
-      global.client.handleReply.push({
-        name: this.config.name,
-        messageID: msg.messageID,
+      if (!global.GoatBot.onReply) global.GoatBot.onReply = new Map();
+      global.GoatBot.onReply.set(msg.messageID, {
+        commandName: this.config.name,
         author: senderID,
         postData: postData,
         type: "overview"
