@@ -26,20 +26,14 @@ module.exports = {
   onStart: async function ({ api, event, args, message }) {
     const { threadID, messageID, senderID } = event;
     
+    // React with thinking emoji
+    api.setMessageReaction("🤔", messageID, () => {}, true);
+    
     // If no arguments, show help
     if (!args || args.length === 0) {
+      api.setMessageReaction("❓", messageID, () => {}, true);
       return message.reply(
-        `🤖 𝗥𝗘𝗡𝗭𝗚𝗣𝗧 𝗔𝗜\n\n` +
-        `𝗨𝘀𝗮𝗴𝗲: ${this.config.guide.en}\n\n` +
-        `𝗘𝘅𝗮𝗺𝗽𝗹𝗲:\n` +
-        `$renzgpt -model gemini Hello!\n\n` +
-        `𝗔𝘃𝗮𝗶𝗹𝗮𝗯𝗹𝗲 𝗠𝗼𝗱𝗲𝗹𝘀:\n` +
-        `• coding-hacking - DeepSeek Chat (Default)\n` +
-        `• coding-fast - DeepSeek V3.2\n` +
-        `• minimal - GPT-5.4 Mini\n` +
-        `• gemini - Gemini 2.0 Flash\n` +
-        `• llama - Llama 4\n` +
-        `• mistral - Mistral Large`
+        `╭───〔 🤖 𝗥𝗘𝗡𝗭𝗚𝗣𝗧 𝗔𝗜 〕───╮\n│\n│ 𝗨𝘀𝗮𝗴𝗲: ${this.config.guide.en}\n│\n│ 𝗘𝘅𝗮𝗺𝗽𝗹𝗲:\n│ $renzgpt -model gemini Hello!\n│\n│ 𝗔𝘃𝗮𝗶𝗹𝗮𝗯𝗹𝗲 𝗠𝗼𝗱𝗲𝗹𝘀:\n│ • coding-hacking - DeepSeek Chat (Default)\n│ • coding-fast - DeepSeek V3.2\n│ • minimal - GPT-5.4 Mini\n│ • gemini - Gemini 2.0 Flash\n│ • llama - Llama 4\n│ • mistral - Mistral Large\n│\n╰─────────────────────`
       );
     }
 
@@ -73,6 +67,7 @@ module.exports = {
     
     // If no message after removing model flag, show error
     if (!messageText || messageText.length === 0) {
+      api.setMessageReaction("⚠️", messageID, () => {}, true);
       return message.reply('❌ Please provide a message after the model selection.\nExample: $renzgpt -model gemini Hello!');
     }
 
@@ -80,33 +75,42 @@ module.exports = {
     const apiKey = global.GoatBot?.config?.openrouter_api_key || process.env.OPENROUTER_API_KEY || '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';
     
     if (!apiKey) {
-      return message.reply('❌ OpenRouter API key not configured. Please set OPENROUTER_API_KEY in config or environment.');
+      api.setMessageReaction("❌", messageID, () => {}, true);
+      return message.reply('❌ OpenRouter API key not configured.');
     }
 
-    // Send initial progress message
-    const progressMessage = await message.reply('⏳ **Connecting to AI...**');
+    // Send initial progress message with loading bar
+    const loadingMsg = await api.sendMessage(
+      `╭───〔 🤖 𝗥𝗘𝗡𝗭𝗚𝗣𝗧 〕───╮\n│\n│ ░░░░░░░░░░ 0%\n│\n╰─────────────────────`,
+      threadID
+    );
 
-    // Progress emojis for different stages
+    // Progress stages with emojis and text
     const stages = [
-      { emoji: '🔍', text: 'Analyzing your request...' },
-      { emoji: '🧠', text: 'Processing with AI model...' },
-      { emoji: '⚡', text: 'Generating response...' },
-      { emoji: '📝', text: 'Finalizing output...' }
+      { percent: 10, filled: 1, emoji: '🔍', text: 'Analyzing request...' },
+      { percent: 25, filled: 3, emoji: '🧠', text: 'Processing with AI...' },
+      { percent: 50, filled: 5, emoji: '⚡', text: 'Generating response...' },
+      { percent: 75, filled: 8, emoji: '📝', text: 'Finalizing output...' },
+      { percent: 100, filled: 10, emoji: '✅', text: 'Complete!' }
     ];
 
     // Function to update progress
     const updateProgress = async (stageIndex) => {
       if (stageIndex < stages.length) {
         const stage = stages[stageIndex];
+        const bar = "█".repeat(stage.filled) + "░".repeat(10 - stage.filled);
         await api.editMessage(
-          `${stage.emoji} **${stage.text}**`,
-          progressMessage.messageID,
-          threadID
+          `╭───〔 🤖 𝗥𝗘𝗡𝗭𝗚𝗣𝗧 〕───╮\n│\n│ ${stage.emoji} ${stage.text}\n│ ${bar} ${stage.percent}%\n│\n╰─────────────────────`,
+          loadingMsg.messageID
         );
+        await new Promise(resolve => setTimeout(resolve, 300));
       }
     };
 
     try {
+      // Update progress: Stage 0 - Analyzing
+      await updateProgress(0);
+
       // Send typing indicator
       api.sendTypingIndicator(threadID);
 
@@ -143,8 +147,8 @@ module.exports = {
         { role: "user", content: messageText }
       ];
 
-      // Update progress: Analyzing
-      await updateProgress(0);
+      // Update progress: Stage 1 - Processing
+      await updateProgress(1);
 
       // Call OpenRouter API
       const response = await axios.post(
@@ -167,22 +171,22 @@ module.exports = {
         }
       );
 
-      // Update progress: Processing
-      await updateProgress(1);
+      // Update progress: Stage 2 - Generating
+      await updateProgress(2);
 
       const reply = response.data?.choices?.[0]?.message?.content;
 
       if (!reply) {
+        api.setMessageReaction("❌", messageID, () => {}, true);
         await api.editMessage(
-          '❌ No response received from AI.',
-          progressMessage.messageID,
-          threadID
+          `╭───〔 ❌ 𝗘𝗥𝗥𝗢𝗥 〕───╮\n│\n│ No response received from AI.\n│\n╰─────────────────────`,
+          loadingMsg.messageID
         );
         return;
       }
 
-      // Update progress: Generating
-      await updateProgress(2);
+      // Update progress: Stage 3 - Finalizing
+      await updateProgress(3);
 
       // Format with proper bold text using Unicode bold characters
       const boldModel = modelDisplay.split('').map(char => {
@@ -199,21 +203,23 @@ module.exports = {
       }).join('');
 
       // Final formatted reply
-      const finalReply = `🤖 𝗥𝗲𝗻𝘇𝗚𝗣𝗧 (${boldModel})\n\n${reply}`;
+      const finalReply = `╭───〔 🤖 𝗥𝗲𝗻𝘇𝗚𝗣𝗧 (${boldModel}) 〕───╮\n│\n${reply.split('\n').map(line => `│ ${line}`).join('\n')}\n│\n╰─────────────────────`;
 
-      // Update progress: Finalizing
-      await updateProgress(3);
+      // Update progress: Stage 4 - Complete
+      await updateProgress(4);
+
+      // React with checkmark
+      api.setMessageReaction("✅", messageID, () => {}, true);
 
       // Small delay before final response
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise(resolve => setTimeout(resolve, 300));
 
       // Edit the progress message to show the final response
       if (finalReply.length > 2000) {
-        // If too long, send as separate messages
+        // If too long, split and send as separate messages
         await api.editMessage(
-          '✅ **Response ready!**',
-          progressMessage.messageID,
-          threadID
+          `╭───〔 ✅ 𝗥𝗘𝗦𝗣𝗢𝗡𝗦𝗘 𝗥𝗘𝗔𝗗𝗬 〕───╮\n│\n│ Response is too long, splitting...\n│\n╰─────────────────────`,
+          loadingMsg.messageID
         );
         
         const chunks = splitMessage(finalReply, 1900);
@@ -223,13 +229,14 @@ module.exports = {
       } else {
         await api.editMessage(
           finalReply,
-          progressMessage.messageID,
+          loadingMsg.messageID,
           threadID
         );
       }
 
     } catch (error) {
       console.error('RenzGPT Error:', error);
+      api.setMessageReaction("❌", messageID, () => {}, true);
       
       let errorMessage = '❌ An error occurred while processing your request.';
       
@@ -246,9 +253,8 @@ module.exports = {
       }
       
       await api.editMessage(
-        errorMessage,
-        progressMessage.messageID,
-        threadID
+        `╭───〔 ❌ 𝗘𝗥𝗥𝗢𝗥 〕───╮\n│\n│ ${errorMessage}\n│\n╰─────────────────────`,
+        loadingMsg.messageID
       );
     }
   }
