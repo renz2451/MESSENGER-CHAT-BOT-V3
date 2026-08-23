@@ -18,6 +18,10 @@ module.exports = {
     const { threadID, messageID, senderID } = event;
     const uuid = getGUID();
     
+    // Initialize handleReply if it doesn't exist
+    if (!global.client) global.client = {};
+    if (!global.client.handleReply) global.client.handleReply = [];
+    
     const formData = {
       input: {
         composer_entry_point: "inline_composer",
@@ -167,10 +171,10 @@ module.exports = {
     else if (type == "image") {
       if (event.body != "0") {
         const allStreamFile = [];
-        const pathImage = path.join(__dirname, 'cache', 'imagePost.png');
+        const cacheDir = path.join(__dirname, 'cache');
+        const pathImage = path.join(cacheDir, 'imagePost.png');
         
         // Ensure cache directory exists
-        const cacheDir = path.dirname(pathImage);
         if (!fs.existsSync(cacheDir)) {
           fs.mkdirSync(cacheDir, { recursive: true });
         }
