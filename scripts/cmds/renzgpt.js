@@ -202,15 +202,188 @@ module.exports = {
         return boldMap[char] || char;
       }).join('');
 
-      // Split reply into lines and format
-      const replyLines = reply.split('\n');
-      const formattedReplyLines = replyLines.map(line => `│ ${line}`).join('\n');
+      // Helper function to format code blocks with proper indentation
+      function formatCodeBlock(text, lang = '') {
+        // Extract code blocks from the reply
+        const lines = text.split('\n');
+        let formattedLines = [];
+        let inCodeBlock = false;
+        let codeLines = [];
+        let codeLang = '';
+        
+        for (const line of lines) {
+          // Check if this is a code block marker
+          if (line.trim().startsWith('```')) {
+            if (!inCodeBlock) {
+              // Starting a code block
+              inCodeBlock = true;
+              codeLang = line.trim().substring(3).trim();
+              // Add a blank line before code block
+              formattedLines.push('');
+              continue;
+            } else {
+              // Ending a code block
+              inCodeBlock = false;
+              // Add the formatted code block
+              formattedLines.push(`│ ${codeLang.toUpperCase()} CODE`);
+              formattedLines.push('│');
+              // Indent each code line
+              for (const codeLine of codeLines) {
+                formattedLines.push(`│ ${codeLine}`);
+              }
+              formattedLines.push('│');
+              formattedLines.push('');
+              codeLines = [];
+              codeLang = '';
+              continue;
+            }
+          }
+          
+          if (inCodeBlock) {
+            codeLines.push(line);
+          } else {
+            // Regular text - preserve formatting
+            if (line.trim() === '') {
+              formattedLines.push('');
+            } else {
+              formattedLines.push(line);
+            }
+          }
+        }
+        
+        return formattedLines;
+      }
 
-      // Final formatted reply - This is what replaces the progress message
-      const finalReply = `╭───〔 🤖 𝗥𝗲𝗻𝘇𝗚𝗣𝗧 (${boldModel}) 〕───╮\n│\n${formattedReplyLines}\n│\n╰─────────────────────`;
+      // Process the reply to format code blocks
+      const lines = reply.split('\n');
+      let formattedLines = [];
+      let inCodeBlock = false;
+      let codeLines = [];
+      let codeLang = '';
+      
+      for (const line of lines) {
+        if (line.trim().startsWith('```')) {
+          if (!inCodeBlock) {
+            inCodeBlock = true;
+            codeLang = line.trim().substring(3).trim();
+            formattedLines.push('');
+            continue;
+          } else {
+            inCodeBlock = false;
+            formattedLines.push(`│ 📁 ${codeLang.toUpperCase()} CODE`);
+            formattedLines.push('│');
+            for (const codeLine of codeLines) {
+              // Remove extra indentation if it's a code block
+              const cleanLine = codeLine.replace(/^ {4}/, '');
+              formattedLines.push(`│ ${cleanLine}`);
+            }
+            formattedLines.push('│');
+            formattedLines.push('');
+            codeLines = [];
+            codeLang = '';
+            continue;
+          }
+        }
+        
+        if (inCodeBlock) {
+          codeLines.push(line);
+        } else {
+          if (line.trim() === '') {
+            formattedLines.push('');
+          } else {
+            // Format bold text using Unicode bold
+            let formattedLine = line;
+            // Convert **text** to bold Unicode
+            formattedLine = formattedLine.replace(/\*\*([^*]+)\*\*/g, (match, text) => {
+              return text.split('').map(char => {
+                const boldMap = {
+                  'A': '𝗔', 'B': '𝗕', 'C': '𝗖', 'D': '𝗗', 'E': '𝗘', 'F': '𝗙', 'G': '𝗚', 'H': '𝗛', 'I': '𝗜',
+                  'J': '𝗝', 'K': '𝗞', 'L': '𝗟', 'M': '𝗠', 'N': '𝗡', 'O': '𝗢', 'P': '𝗣', 'Q': '𝗤', 'R': '𝗥',
+                  'S': '𝗦', 'T': '𝗧', 'U': '𝗨', 'V': '𝗩', 'W': '𝗪', 'X': '𝗫', 'Y': '𝗬', 'Z': '𝗭',
+                  'a': '𝗮', 'b': '𝗯', 'c': '𝗰', 'd': '𝗱', 'e': '𝗲', 'f': '𝗳', 'g': '𝗴', 'h': '𝗵', 'i': '𝗶',
+                  'j': '𝗷', 'k': '𝗸', 'l': '𝗹', 'm': '𝗺', 'n': '𝗻', 'o': '𝗼', 'p': '𝗽', 'q': '𝗾', 'r': '𝗿',
+                  's': '𝘀', 't': '𝘁', 'u': '𝘂', 'v': '𝘃', 'w': '𝘄', 'x': '𝘅', 'y': '𝘆', 'z': '𝘇',
+                  '0': '𝟬', '1': '𝟭', '2': '𝟮', '3': '𝟯', '4': '𝟰', '5': '𝟱', '6': '𝟲', '7': '𝟳', '8': '𝟴', '9': '𝟵'
+                };
+                return boldMap[char] || char;
+              }).join('');
+            });
+            
+            // Convert *text* to italic (using Unicode italic)
+            formattedLine = formattedLine.replace(/\*([^*]+)\*/g, (match, text) => {
+              return text.split('').map(char => {
+                const italicMap = {
+                  'A': '𝘈', 'B': '𝘉', 'C': '𝘊', 'D': '𝘋', 'E': '𝘌', 'F': '𝘍', 'G': '𝘎', 'H': '𝘏', 'I': '𝘐',
+                  'J': '𝘑', 'K': '𝘒', 'L': '𝘓', 'M': '𝘔', 'N': '𝘕', 'O': '𝘖', 'P': '𝘗', 'Q': '𝘘', 'R': '𝘙',
+                  'S': '𝘚', 'T': '𝘛', 'U': '𝘜', 'V': '𝘝', 'W': '𝘞', 'X': '𝘟', 'Y': '𝘠', 'Z': '𝘡',
+                  'a': '𝘢', 'b': '𝘣', 'c': '𝘤', 'd': '𝘥', 'e': '𝘦', 'f': '𝘧', 'g': '𝘨', 'h': '𝘩', 'i': '𝘪',
+                  'j': '𝘫', 'k': '𝘬', 'l': '𝘭', 'm': '𝘮', 'n': '𝘯', 'o': '𝘰', 'p': '𝘱', 'q': '𝘲', 'r': '𝘳',
+                  's': '𝘴', 't': '𝘵', 'u': '𝘶', 'v': '𝘷', 'w': '𝘸', 'x': '𝘹', 'y': '𝘺', 'z': '𝘻'
+                };
+                return italicMap[char] || char;
+              }).join('');
+            });
+            
+            // Convert ### Headers to bold with larger size (using Unicode bold)
+            if (formattedLine.startsWith('### ')) {
+              const headerText = formattedLine.substring(4);
+              formattedLine = headerText.split('').map(char => {
+                const boldMap = {
+                  'A': '𝗔', 'B': '𝗕', 'C': '𝗖', 'D': '𝗗', 'E': '𝗘', 'F': '𝗙', 'G': '𝗚', 'H': '𝗛', 'I': '𝗜',
+                  'J': '𝗝', 'K': '𝗞', 'L': '𝗟', 'M': '𝗠', 'N': '𝗡', 'O': '𝗢', 'P': '𝗣', 'Q': '𝗤', 'R': '𝗥',
+                  'S': '𝗦', 'T': '𝗧', 'U': '𝗨', 'V': '𝗩', 'W': '𝗪', 'X': '𝗫', 'Y': '𝗬', 'Z': '𝗭',
+                  'a': '𝗮', 'b': '𝗯', 'c': '𝗰', 'd': '𝗱', 'e': '𝗲', 'f': '𝗳', 'g': '𝗴', 'h': '𝗵', 'i': '𝗶',
+                  'j': '𝗷', 'k': '𝗸', 'l': '𝗹', 'm': '𝗺', 'n': '𝗻', 'o': '𝗼', 'p': '𝗽', 'q': '𝗾', 'r': '𝗿',
+                  's': '𝘀', 't': '𝘁', 'u': '𝘂', 'v': '𝘃', 'w': '𝘄', 'x': '𝘅', 'y': '𝘆', 'z': '𝘇'
+                };
+                return boldMap[char] || char;
+              }).join('');
+              formattedLine = `▶ ${formattedLine}`;
+            }
+            
+            // Convert ## Headers to bold (smaller)
+            if (formattedLine.startsWith('## ')) {
+              const headerText = formattedLine.substring(3);
+              formattedLine = headerText.split('').map(char => {
+                const boldMap = {
+                  'A': '𝗔', 'B': '𝗕', 'C': '𝗖', 'D': '𝗗', 'E': '𝗘', 'F': '𝗙', 'G': '𝗚', 'H': '𝗛', 'I': '𝗜',
+                  'J': '𝗝', 'K': '𝗞', 'L': '𝗟', 'M': '𝗠', 'N': '𝗡', 'O': '𝗢', 'P': '𝗣', 'Q': '𝗤', 'R': '𝗥',
+                  'S': '𝗦', 'T': '𝗧', 'U': '𝗨', 'V': '𝗩', 'W': '𝗪', 'X': '𝗫', 'Y': '𝗬', 'Z': '𝗭',
+                  'a': '𝗮', 'b': '𝗯', 'c': '𝗰', 'd': '𝗱', 'e': '𝗲', 'f': '𝗳', 'g': '𝗴', 'h': '𝗵', 'i': '𝗶',
+                  'j': '𝗷', 'k': '𝗸', 'l': '𝗹', 'm': '𝗺', 'n': '𝗻', 'o': '𝗼', 'p': '𝗽', 'q': '𝗾', 'r': '𝗿',
+                  's': '𝘀', 't': '𝘁', 'u': '𝘂', 'v': '𝘃', 'w': '𝘄', 'x': '𝘅', 'y': '𝘆', 'z': '𝘇'
+                };
+                return boldMap[char] || char;
+              }).join('');
+              formattedLine = `▶ ${formattedLine}`;
+            }
+            
+            // Convert # Headers to bold with large size
+            if (formattedLine.startsWith('# ')) {
+              const headerText = formattedLine.substring(2);
+              formattedLine = headerText.split('').map(char => {
+                const boldMap = {
+                  'A': '𝗔', 'B': '𝗕', 'C': '𝗖', 'D': '𝗗', 'E': '𝗘', 'F': '𝗙', 'G': '𝗚', 'H': '𝗛', 'I': '𝗜',
+                  'J': '𝗝', 'K': '𝗞', 'L': '𝗟', 'M': '𝗠', 'N': '𝗡', 'O': '𝗢', 'P': '𝗣', 'Q': '𝗤', 'R': '𝗥',
+                  'S': '𝗦', 'T': '𝗧', 'U': '𝗨', 'V': '𝗩', 'W': '𝗪', 'X': '𝗫', 'Y': '𝗬', 'Z': '𝗭',
+                  'a': '𝗮', 'b': '𝗯', 'c': '𝗰', 'd': '𝗱', 'e': '𝗲', 'f': '𝗳', 'g': '𝗴', 'h': '𝗵', 'i': '𝗶',
+                  'j': '𝗷', 'k': '𝗸', 'l': '𝗹', 'm': '𝗺', 'n': '𝗻', 'o': '𝗼', 'p': '𝗽', 'q': '𝗾', 'r': '𝗿',
+                  's': '𝘀', 't': '𝘁', 'u': '𝘂', 'v': '𝘃', 'w': '𝘄', 'x': '𝘅', 'y': '𝘆', 'z': '𝘇'
+                };
+                return boldMap[char] || char;
+              }).join('');
+              formattedLine = `▶ ${formattedLine}`;
+            }
+            
+            formattedLines.push(`│ ${formattedLine}`);
+          }
+        }
+      }
+
+      // Final formatted reply
+      const finalReply = `╭───〔 🤖 𝗥𝗲𝗻𝘇𝗚𝗣𝗧 (${boldModel}) 〕───╮\n│\n${formattedLines.join('\n')}\n│\n╰─────────────────────`;
 
       // Stage 4: Complete (100%) - SHOW COMPLETE WITH ANSWER
-      // This is the 5th edit that shows the AI response
       await api.editMessage(
         finalReply,
         loadingMsg.messageID
@@ -244,23 +417,3 @@ module.exports = {
     }
   }
 };
-
-// Helper function to split long messages
-function splitMessage(text, maxLength) {
-  const chunks = [];
-  let currentChunk = '';
-  
-  const lines = text.split('\n');
-  for (const line of lines) {
-    if (currentChunk.length + line.length + 1 > maxLength) {
-      chunks.push(currentChunk);
-      currentChunk = line;
-    } else {
-      if (currentChunk) currentChunk += '\n';
-      currentChunk += line;
-    }
-  }
-  if (currentChunk) chunks.push(currentChunk);
-  
-  return chunks;
-}
