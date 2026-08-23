@@ -9,11 +9,11 @@ module.exports = {
     author: "Renz",
     role: 2,
     usePrefix: true,
-    description: "View and delete all posts from your timeline",
+    description: "Check and delete bot's posts",
     guide: "{pn} [page]",
     category: "operator",
     cooldowns: 10,
-    aliases: ["myposts", "listposts", "deleteposts"]
+    aliases: ["botposts", "myposts"]
   },
 
   onStart: async function ({ api, event, args, message }) {
@@ -24,420 +24,461 @@ module.exports = {
     if (!global.GoatBot) global.GoatBot = {};
     if (!global.GoatBot.onReply) global.GoatBot.onReply = new Map();
     
-    // Parse page number
+    // Get page number from args (default: 1)
     let page = parseInt(args[0]) || 1;
     if (page < 1) page = 1;
     
-    const loadingMsg = await message.reply('📥 Fetching your posts...');
+    const limit = 10; // Posts per page
+    const offset = (page - 1) * limit;
     
     try {
-      // Fetch posts using GraphQL
-      const posts = await getBotPosts(api, botID, page);
+      // Show loading message
+      const loadingMsg = await api.sendMessage('📥 Fetching your posts...', threadID);
+      
+      // Get bot's posts using GraphQL
+      const posts = await getBotPosts(api, botID, limit, offset);
+      
+      // Delete loading message
+      await api.unsendMessage(loadingMsg.messageID);
       
       if (!posts || posts.length === 0) {
-        await api.unsendMessage(loadingMsg.messageID);
-        return message.reply('📭 No posts found on your timeline.');
+        return api.sendMessage(
+          `📭 You don't have any posts on page ${page}.\n\nTotal posts: 0`,
+          threadID,
+          messageID
+        );
       }
       
-      // Build the post list message
-      let postList = `📋 **YOUR POSTS (Page ${page})**\n\n`;
-      postList += `Total: ${posts.length} posts\n`;
-      postList += `Reply with numbers to delete (e.g., "1,2,3" or "1 2 3")\n`;
-      postList += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+      // Calculate total pages (approximate from count if available)
+      const totalPosts = posts.length < limit ? offset + posts.length : offset + limit + 10; // Approximate
+      const totalPages = Math.ceil(totalPosts / limit);
       
+      // Build post list message
+      let postList = `📋 **BOT'S POSTS**\n\n`;
+      postList += `👤 Bot ID: ${botID}\n`;
+      postList += `📄 Page ${page}/${totalPages}\n`;
+      postList += `📊 Showing ${offset + 1}-${offset + posts.length}\n\n`;
+      
+      // Create selectable options
+      const options = [];
       const postMap = {};
       
-      for (let i = 0; i < posts.length; i++) {
-        const post = posts[i];
-        const num = i + 1;
-        postMap[num] = post.id;
+      posts.forEach((post, index) => {
+        const num = index + 1;
+        const postId = post.id || post.post_id;
+        const messageText = post.message || post.text || "(No caption)";
+        const shortText = messageText.length > 40 ? messageText.substring(0, 40) + "..." : messageText;
+        const time = post.created_time || post.time || "";
         
-        const date = post.created_time ? new Date(post.created_time).toLocaleString() : 'Unknown date';
-        const messagePreview = post.message ? post.message.substring(0, 50) : '(No caption)';
-        const attachments = post.attachments ? post.attachments.data.length : 0;
+        postMap[num] = postId;
+        postMap[`post_${num}`] = post;
         
-        postList += `**${num}.** ${messagePreview}\n`;
-        postList += `   📅 ${date}\n`;
-        postList += `   🖼️ ${attachments} attachments\n`;
-        postList += `   🔗 ${post.permalink_url || 'No link'}\n\n`;
-      }
+        // Show emoji for post type
+        let emoji = "📝";
+        if (post.attachments && post.attachments.length > 0) {
+          const hasPhoto = post.attachments.some(a => a.type === "photo");
+          const hasVideo = post.attachments.some(a => a.type === "video");
+          if (hasPhoto && hasVideo) emoji = "🎬";
+          else if (hasPhoto) emoji = "🖼️";
+          else if (hasVideo) emoji = "🎥";
+        }
+        
+        postList += `${num}. ${emoji} ${shortText}\n`;
+        postList += `   🆔 ${postId}\n`;
+        postList += `   📅 ${time}\n\n`;
+      });
       
-      postList += `━━━━━━━━━━━━━━━━━━━━━━\n`;
-      postList += `Reply with numbers to delete (e.g., "1,2,3" or "1 2 3")\n`;
-      postList += `Or type "cancel" to cancel.`;
+      postList += `\n━━━━━━━━━━━━━━━━━━━\n`;
+      postList += `📌 **Instructions:**\n`;
+      postList += `• Reply with numbers to select posts (e.g., "1 3 5")\n`;
+      postList += `• Reply with "all" to select all posts\n`;
+      postList += `• Reply with "next" for next page\n`;
+      postList += `• Reply with "prev" for previous page\n`;
+      postList += `• Reply with "cancel" to exit\n\n`;
+      postList += `⚠️ Selected posts will be **DELETED PERMANENTLY**!`;
       
-      await api.unsendMessage(loadingMsg.messageID);
+      // Store post data for reply handling
+      if (!global.GoatBot.postSelection) global.GoatBot.postSelection = {};
+      global.GoatBot.postSelection[senderID] = {
+        posts: posts,
+        postMap: postMap,
+        page: page,
+        totalPages: totalPages,
+        limit: limit,
+        selected: [],
+        confirmed: false
+      };
       
       const msg = await api.sendMessage(postList, threadID);
       
-      // Store the reply handler
+      // Store reply handler
       if (!global.GoatBot.onReply) global.GoatBot.onReply = new Map();
       global.GoatBot.onReply.set(msg.messageID, {
         commandName: this.config.name,
         author: senderID,
-        postMap: postMap,
-        posts: posts,
-        page: page,
-        type: "deletePosts"
+        type: "selectPosts"
       });
       
     } catch (error) {
       console.error('Error fetching posts:', error);
-      await api.unsendMessage(loadingMsg.messageID);
-      return message.reply(`❌ Failed to fetch posts: ${error.message || 'Unknown error'}`);
+      return api.sendMessage(
+        `❌ Failed to fetch posts: ${error.message || 'Unknown error'}`,
+        threadID,
+        messageID
+      );
     }
   },
 
   onReply: async function ({ api, event, Reply, getLang }) {
-    console.log('onReply triggered:', event.body);
+    console.log('onReply triggered for checkbotallpost:', event.body);
     
-    const { author, postMap, posts, page, type } = Reply;
+    const { author, type } = Reply;
     const { threadID, messageID, senderID, body } = event;
-
+    
     if (!Reply || event.senderID != author) return;
     
-    if (type === "deletePosts") {
-      const input = body.trim().toLowerCase();
-      
-      if (input === 'cancel') {
-        await api.unsendMessage(Reply.messageID);
-        return api.sendMessage('❌ Post deletion cancelled.', threadID, messageID);
+    // Get user's selection data
+    if (!global.GoatBot.postSelection) {
+      return api.sendMessage('❌ Session expired. Please run the command again.', threadID, messageID);
+    }
+    
+    const userData = global.GoatBot.postSelection[senderID];
+    if (!userData) {
+      return api.sendMessage('❌ No active session. Please run the command again.', threadID, messageID);
+    }
+    
+    const { posts, postMap, page, totalPages, limit, selected } = userData;
+    
+    const input = body.trim().toLowerCase();
+    
+    // Handle navigation
+    if (input === 'next') {
+      if (page >= totalPages) {
+        return api.sendMessage('📭 You are already on the last page.', threadID, messageID);
       }
       
-      // Parse the numbers
-      const numbers = input.split(/[, ]+/).map(n => parseInt(n.trim())).filter(n => !isNaN(n) && n > 0);
+      // Unsend current message and restart with next page
+      await api.unsendMessage(Reply.messageID);
       
-      if (numbers.length === 0) {
-        return api.sendMessage('❌ Invalid input. Please enter valid numbers (e.g., "1,2,3" or "1 2 3")', threadID, messageID);
+      const newArgs = [page + 1];
+      return this.onStart({ api, event: { ...event, args: newArgs }, args: newArgs, message: { reply: api.sendMessage } });
+    }
+    
+    if (input === 'prev') {
+      if (page <= 1) {
+        return api.sendMessage('📭 You are already on the first page.', threadID, messageID);
       }
-      
-      // Get the post IDs to delete
-      const postsToDelete = [];
-      const invalidNumbers = [];
-      
-      for (const num of numbers) {
-        if (postMap[num]) {
-          postsToDelete.push({
-            id: postMap[num],
-            number: num,
-            preview: posts[num - 1]?.message?.substring(0, 30) || '(No caption)'
-          });
-        } else {
-          invalidNumbers.push(num);
-        }
-      }
-      
-      if (postsToDelete.length === 0) {
-        return api.sendMessage('❌ No valid post numbers found. Please check the numbers and try again.', threadID, messageID);
-      }
-      
-      // Show confirmation
-      let confirmMsg = `⚠️ **CONFIRM DELETION**\n\n`;
-      confirmMsg += `Are you sure you want to delete these ${postsToDelete.length} post(s)?\n\n`;
-      
-      for (const post of postsToDelete) {
-        confirmMsg += `**${post.number}.** ${post.preview}\n`;
-      }
-      
-      confirmMsg += `\nReply with:\n`;
-      confirmMsg += `✅ "yes" to confirm\n`;
-      confirmMsg += `❌ "no" to cancel`;
       
       await api.unsendMessage(Reply.messageID);
       
-      const msg = await api.sendMessage(confirmMsg, threadID);
+      const newArgs = [page - 1];
+      return this.onStart({ api, event: { ...event, args: newArgs }, args: newArgs, message: { reply: api.sendMessage } });
+    }
+    
+    if (input === 'cancel') {
+      // Clear session
+      delete global.GoatBot.postSelection[senderID];
+      await api.unsendMessage(Reply.messageID);
+      return api.sendMessage('❌ Operation cancelled.', threadID, messageID);
+    }
+    
+    // Handle selection
+    if (input === 'all') {
+      // Select all posts
+      const allIds = posts.map(p => p.id || p.post_id);
+      userData.selected = allIds;
       
-      // Store the confirmation handler
+      const selectionMsg = showSelectedPosts(allIds, posts);
+      const msg = await api.sendMessage(
+        `${selectionMsg}\n\nReply with "confirm" to delete these posts or "cancel" to go back.`,
+        threadID
+      );
+      
+      // Update handler for confirmation
       if (!global.GoatBot.onReply) global.GoatBot.onReply = new Map();
       global.GoatBot.onReply.set(msg.messageID, {
         commandName: this.config.name,
         author: senderID,
-        postsToDelete: postsToDelete,
         type: "confirmDelete"
       });
-    }
-    else if (type === "confirmDelete") {
-      const { postsToDelete } = Reply;
-      const input = body.trim().toLowerCase();
       
-      if (input === 'yes' || input === 'y') {
-        await api.unsendMessage(Reply.messageID);
-        
-        const deletingMsg = await api.sendMessage(`🗑️ Deleting ${postsToDelete.length} post(s)...`, threadID);
-        
-        let successCount = 0;
-        let failCount = 0;
-        const failedPosts = [];
-        
-        for (const post of postsToDelete) {
-          try {
-            await deletePost(api, post.id);
-            successCount++;
-            console.log(`Deleted post: ${post.id}`);
-          } catch (error) {
-            failCount++;
-            failedPosts.push(post);
-            console.error(`Failed to delete post ${post.id}:`, error);
-          }
-        }
-        
-        await api.unsendMessage(deletingMsg.messageID);
-        
-        let resultMsg = `✅ **DELETION COMPLETE**\n\n`;
-        resultMsg += `✓ Successfully deleted: ${successCount} post(s)\n`;
-        
-        if (failCount > 0) {
-          resultMsg += `✗ Failed to delete: ${failCount} post(s)\n\n`;
-          resultMsg += `Failed posts:\n`;
-          for (const post of failedPosts) {
-            resultMsg += `• ${post.preview}\n`;
-          }
-        }
-        
-        // Ask if they want to refresh the list
-        resultMsg += `\nReply with:\n`;
-        resultMsg += `🔄 "refresh" to see updated post list\n`;
-        resultMsg += `✅ "done" to finish`;
-        
-        const msg = await api.sendMessage(resultMsg, threadID);
-        
-        // Store the refresh handler
-        if (!global.GoatBot.onReply) global.GoatBot.onReply = new Map();
-        global.GoatBot.onReply.set(msg.messageID, {
-          commandName: this.config.name,
-          author: senderID,
-          page: Reply.page || 1,
-          type: "refresh"
-        });
-        
-      } else if (input === 'no' || input === 'n') {
-        await api.unsendMessage(Reply.messageID);
-        return api.sendMessage('❌ Post deletion cancelled.', threadID, messageID);
-      } else {
-        return api.sendMessage('❌ Invalid input. Please reply with "yes" or "no".', threadID, messageID);
-      }
+      return;
     }
-    else if (type === "refresh") {
-      const input = body.trim().toLowerCase();
+    
+    // Parse numbers (e.g., "1 3 5")
+    const numbers = input.split(/\s+/).map(n => parseInt(n)).filter(n => !isNaN(n) && n > 0);
+    
+    if (numbers.length === 0) {
+      return api.sendMessage(
+        `❌ Invalid input. Please reply with numbers (e.g., "1 3 5"), "all", "next", "prev", or "cancel".`,
+        threadID,
+        messageID
+      );
+    }
+    
+    // Check if numbers are valid
+    const validNumbers = numbers.filter(n => n <= posts.length);
+    if (validNumbers.length === 0) {
+      return api.sendMessage(
+        `❌ Invalid post numbers. Please choose numbers between 1 and ${posts.length}.`,
+        threadID,
+        messageID
+      );
+    }
+    
+    // Get selected post IDs
+    const selectedIds = validNumbers.map(n => postMap[n]).filter(id => id);
+    
+    if (selectedIds.length === 0) {
+      return api.sendMessage('❌ No valid posts selected.', threadID, messageID);
+    }
+    
+    userData.selected = selectedIds;
+    
+    const selectionMsg = showSelectedPosts(selectedIds, posts);
+    const msg = await api.sendMessage(
+      `${selectionMsg}\n\nReply with "confirm" to delete these posts or "cancel" to go back.`,
+      threadID
+    );
+    
+    // Update handler for confirmation
+    if (!global.GoatBot.onReply) global.GoatBot.onReply = new Map();
+    global.GoatBot.onReply.set(msg.messageID, {
+      commandName: this.config.name,
+      author: senderID,
+      type: "confirmDelete"
+    });
+  },
+
+  handleReply: async function ({ api, event, Reply, getLang }) {
+    console.log('handleReply triggered for checkbotallpost:', event.body);
+    
+    const { author, type } = Reply;
+    const { threadID, messageID, senderID, body } = event;
+    
+    if (!Reply || event.senderID != author) return;
+    
+    // Get user's selection data
+    if (!global.GoatBot.postSelection) {
+      return api.sendMessage('❌ Session expired. Please run the command again.', threadID, messageID);
+    }
+    
+    const userData = global.GoatBot.postSelection[senderID];
+    if (!userData) {
+      return api.sendMessage('❌ No active session. Please run the command again.', threadID, messageID);
+    }
+    
+    const { posts, selected } = userData;
+    const input = body.trim().toLowerCase();
+    
+    if (input === 'cancel') {
+      delete global.GoatBot.postSelection[senderID];
+      await api.unsendMessage(Reply.messageID);
+      return api.sendMessage('❌ Operation cancelled.', threadID, messageID);
+    }
+    
+    if (input === 'confirm') {
+      // Delete selected posts
+      await api.unsendMessage(Reply.messageID);
       
-      if (input === 'refresh') {
-        await api.unsendMessage(Reply.messageID);
-        
-        // Re-run the command with the same page
-        const botID = api.getCurrentUserID();
-        const page = Reply.page || 1;
-        
-        const loadingMsg = await api.sendMessage('📥 Refreshing post list...', threadID);
-        
+      const deletingMsg = await api.sendMessage('🗑️ Deleting selected posts...', threadID);
+      
+      let deletedCount = 0;
+      let failedCount = 0;
+      const failedIds = [];
+      
+      for (const postId of selected) {
         try {
-          const posts = await getBotPosts(api, botID, page);
-          
-          if (!posts || posts.length === 0) {
-            await api.unsendMessage(loadingMsg.messageID);
-            return api.sendMessage('📭 No posts found on your timeline.', threadID, messageID);
-          }
-          
-          let postList = `📋 **YOUR POSTS (Page ${page})**\n\n`;
-          postList += `Total: ${posts.length} posts\n`;
-          postList += `Reply with numbers to delete (e.g., "1,2,3" or "1 2 3")\n`;
-          postList += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
-          
-          const postMap = {};
-          
-          for (let i = 0; i < posts.length; i++) {
-            const post = posts[i];
-            const num = i + 1;
-            postMap[num] = post.id;
-            
-            const date = post.created_time ? new Date(post.created_time).toLocaleString() : 'Unknown date';
-            const messagePreview = post.message ? post.message.substring(0, 50) : '(No caption)';
-            const attachments = post.attachments ? post.attachments.data.length : 0;
-            
-            postList += `**${num}.** ${messagePreview}\n`;
-            postList += `   📅 ${date}\n`;
-            postList += `   🖼️ ${attachments} attachments\n`;
-            postList += `   🔗 ${post.permalink_url || 'No link'}\n\n`;
-          }
-          
-          postList += `━━━━━━━━━━━━━━━━━━━━━━\n`;
-          postList += `Reply with numbers to delete (e.g., "1,2,3" or "1 2 3")\n`;
-          postList += `Or type "cancel" to cancel.`;
-          
-          await api.unsendMessage(loadingMsg.messageID);
-          
-          const msg = await api.sendMessage(postList, threadID);
-          
-          if (!global.GoatBot.onReply) global.GoatBot.onReply = new Map();
-          global.GoatBot.onReply.set(msg.messageID, {
-            commandName: this.config.name,
-            author: senderID,
-            postMap: postMap,
-            posts: posts,
-            page: page,
-            type: "deletePosts"
-          });
-          
+          await deletePost(api, postId);
+          deletedCount++;
+          console.log(`Deleted post: ${postId}`);
         } catch (error) {
-          await api.unsendMessage(loadingMsg.messageID);
-          return api.sendMessage(`❌ Failed to refresh posts: ${error.message}`, threadID, messageID);
+          failedCount++;
+          failedIds.push(postId);
+          console.error(`Failed to delete post ${postId}:`, error);
         }
-      } else if (input === 'done') {
-        await api.unsendMessage(Reply.messageID);
-        return api.sendMessage('✅ Done!', threadID, messageID);
-      } else {
-        return api.sendMessage('❌ Invalid input. Reply with "refresh" or "done".', threadID, messageID);
       }
+      
+      await api.unsendMessage(deletingMsg.messageID);
+      
+      // Clear session
+      delete global.GoatBot.postSelection[senderID];
+      
+      let resultMsg = `✅ **DELETE COMPLETE!**\n\n`;
+      resultMsg += `🗑️ Successfully deleted: ${deletedCount} post(s)\n`;
+      
+      if (failedCount > 0) {
+        resultMsg += `❌ Failed to delete: ${failedCount} post(s)\n`;
+        resultMsg += `Failed IDs: ${failedIds.join(', ')}\n\n`;
+        resultMsg += `💡 Some posts may require manual deletion from Facebook.`;
+      } else {
+        resultMsg += `\n🎉 All selected posts have been deleted successfully!`;
+      }
+      
+      return api.sendMessage(resultMsg, threadID, messageID);
     }
+    
+    return api.sendMessage('❌ Invalid response. Please reply with "confirm" or "cancel".', threadID, messageID);
   }
 };
 
-// Function to fetch bot posts using GraphQL
-async function getBotPosts(api, botID, page) {
+// Helper function to get bot's posts
+async function getBotPosts(api, botID, limit, offset) {
   try {
-    const limit = 10;
-    const offset = (page - 1) * limit;
+    // Try using GraphQL to fetch posts
+    const form = {
+      fb_api_req_friendly_name: "ProfileCometTimelineFeedQuery",
+      fb_api_caller_class: "RelayModern",
+      doc_id: "6466815830162383",
+      variables: JSON.stringify({
+        id: botID,
+        scale: 3,
+        first: limit,
+        after: offset > 0 ? offset.toString() : null,
+        __relay_internal__pv__IsMergQAPollsrelayprovider: false,
+        __relay_internal__pv__IsWorkUserrelayprovider: false,
+        __relay_internal__pv__StoriesArmadilloReplyEnabledrelayprovider: false
+      })
+    };
     
-    // Try different GraphQL queries to get posts
-    const docIds = [
-      "3036465344905296", // Profile timeline query
-      "6125913748951066",  // Alternative
-      "4832685473425817"   // Another
-    ];
+    const result = await new Promise((resolve, reject) => {
+      api.httpPost('https://www.facebook.com/api/graphql/', form, (err, res) => {
+        if (err) reject(err);
+        else resolve(res);
+      });
+    });
     
-    for (const docId of docIds) {
+    let data = result;
+    if (typeof data === 'string') {
       try {
-        const form = {
-          doc_id: docId,
-          variables: JSON.stringify({
-            id: botID,
-            first: limit,
-            after: offset > 0 ? offset.toString() : null,
-            scale: 3
-          })
-        };
-        
-        const result = await new Promise((resolve, reject) => {
-          api.httpPost('https://www.facebook.com/api/graphql/', form, (err, res) => {
-            if (err) reject(err);
-            else resolve(res);
-          });
-        });
-        
-        let data = result;
-        if (typeof data === 'string') {
-          data = JSON.parse(data.replace('for (;;);', ''));
-        }
-        
-        if (data.errors) {
-          console.log(`GraphQL doc_id ${docId} failed:`, data.errors[0]?.message);
-          continue;
-        }
-        
-        // Extract posts from different possible response structures
-        let posts = [];
-        
-        // Try different paths
-        if (data.data?.node?.timeline_feed_units?.edges) {
-          posts = data.data.node.timeline_feed_units.edges.map(edge => {
-            const node = edge.node;
-            return {
-              id: node.id || node.legacy_story_hideable_id,
-              message: node.message?.text || node.message || '',
-              created_time: node.creation_time || node.created_time,
-              permalink_url: node.permalink_url || '',
-              attachments: node.attachments || { data: [] }
-            };
-          });
-        } else if (data.data?.viewer?.timeline_feed_units?.edges) {
-          posts = data.data.viewer.timeline_feed_units.edges.map(edge => {
-            const node = edge.node;
-            return {
-              id: node.id || node.legacy_story_hideable_id,
-              message: node.message?.text || node.message || '',
-              created_time: node.creation_time || node.created_time,
-              permalink_url: node.permalink_url || '',
-              attachments: node.attachments || { data: [] }
-            };
-          });
-        } else if (data.data?.node?.posts?.edges) {
-          posts = data.data.node.posts.edges.map(edge => {
-            const node = edge.node;
-            return {
-              id: node.id,
-              message: node.message || '',
-              created_time: node.created_time,
-              permalink_url: node.permalink_url || '',
-              attachments: node.attachments || { data: [] }
-            };
-          });
-        }
-        
-        if (posts && posts.length > 0) {
-          console.log(`Found ${posts.length} posts using doc_id ${docId}`);
-          return posts;
-        }
-        
-      } catch (error) {
-        console.log(`Error with doc_id ${docId}:`, error.message);
+        data = JSON.parse(data.replace('for (;;);', ''));
+      } catch (e) {
+        console.log('Failed to parse GraphQL response');
       }
     }
     
-    // Fallback: Try using the simpler feed endpoint
-    try {
-      const form = {
+    // Try to extract posts from different response structures
+    let posts = [];
+    
+    // Structure 1: data.viewer.actor_profile.timeline_feed.units.edges
+    if (data?.data?.viewer?.actor_profile?.timeline_feed?.units?.edges) {
+      posts = data.data.viewer.actor_profile.timeline_feed.units.edges
+        .filter(edge => edge.node)
+        .map(edge => {
+          const node = edge.node;
+          return {
+            id: node.id || node.post_id,
+            post_id: node.post_id || node.id,
+            message: node.message?.text || node.message || node.title || "",
+            created_time: node.creation_time || node.created_time || "",
+            attachments: node.attachments || []
+          };
+        });
+    }
+    // Structure 2: data.viewer.actor_profile.timeline_feed.edges
+    else if (data?.data?.viewer?.actor_profile?.timeline_feed?.edges) {
+      posts = data.data.viewer.actor_profile.timeline_feed.edges
+        .filter(edge => edge.node)
+        .map(edge => {
+          const node = edge.node;
+          return {
+            id: node.id || node.post_id,
+            post_id: node.post_id || node.id,
+            message: node.message?.text || node.message || node.title || "",
+            created_time: node.creation_time || node.created_time || "",
+            attachments: node.attachments || []
+          };
+        });
+    }
+    // Structure 3: data.data.viewer.actor_profile.timeline_feed.edges
+    else if (data?.data?.viewer?.actor_profile?.timeline_feed?.edges) {
+      posts = data.data.viewer.actor_profile.timeline_feed.edges
+        .filter(edge => edge.node)
+        .map(edge => {
+          const node = edge.node;
+          return {
+            id: node.id || node.post_id,
+            post_id: node.post_id || node.id,
+            message: node.message?.text || node.message || node.title || "",
+            created_time: node.creation_time || node.created_time || "",
+            attachments: node.attachments || []
+          };
+        });
+    }
+    // Structure 4: Direct array
+    else if (Array.isArray(data?.data?.viewer?.actor_profile?.timeline_feed?.edges)) {
+      posts = data.data.viewer.actor_profile.timeline_feed.edges
+        .filter(edge => edge.node)
+        .map(edge => {
+          const node = edge.node;
+          return {
+            id: node.id || node.post_id,
+            post_id: node.post_id || node.id,
+            message: node.message?.text || node.message || node.title || "",
+            created_time: node.creation_time || node.created_time || "",
+            attachments: node.attachments || []
+          };
+        });
+    }
+    
+    // If GraphQL failed, try alternative method using feed endpoint
+    if (posts.length === 0) {
+      console.log('GraphQL method failed, trying alternative...');
+      
+      const feedForm = {
         profile_id: botID,
         limit: limit,
-        offset: offset
+        offset: offset,
+        source: "timeline"
       };
       
-      const result = await new Promise((resolve, reject) => {
-        api.httpPost('https://www.facebook.com/feed/get_feed.php', form, (err, res) => {
+      const feedResult = await new Promise((resolve, reject) => {
+        api.httpPost('https://www.facebook.com/ajax/feed/', feedForm, (err, res) => {
           if (err) reject(err);
           else resolve(res);
         });
       });
       
-      let data = result;
-      if (typeof data === 'string') {
-        data = JSON.parse(data.replace('for (;;);', ''));
+      let feedData = feedResult;
+      if (typeof feedData === 'string') {
+        try {
+          feedData = JSON.parse(feedData.replace('for (;;);', ''));
+        } catch (e) {}
       }
       
-      if (data && data.payload && data.payload.actions) {
-        const posts = data.payload.actions.map(action => ({
-          id: action.post_id || action.id,
-          message: action.text || action.message || '',
-          created_time: action.time || action.created_time,
-          permalink_url: action.permalink_url || '',
-          attachments: action.attachments || { data: [] }
-        }));
-        
-        if (posts.length > 0) {
-          return posts;
-        }
+      if (feedData?.payload?.actions) {
+        posts = feedData.payload.actions
+          .filter(action => action.type === "story")
+          .map(action => ({
+            id: action.post_id || action.story_id,
+            post_id: action.post_id || action.story_id,
+            message: action.title || action.text || "",
+            created_time: action.created_time || action.time || "",
+            attachments: action.attachments || []
+          }));
       }
-    } catch (error) {
-      console.log('Fallback feed method failed:', error.message);
     }
     
-    return [];
+    return posts;
     
   } catch (error) {
     console.error('Error fetching posts:', error);
-    throw error;
+    return [];
   }
 }
 
-// Function to delete a post
-async function deletePost(api, postID) {
+// Helper function to delete a post
+async function deletePost(api, postId) {
   try {
+    // Method 1: Using GraphQL
     const form = {
-      doc_id: "2050025868351916", // Delete post mutation
+      fb_api_req_friendly_name: "CometStoryDeleteMutation",
+      fb_api_caller_class: "RelayModern",
+      doc_id: "9901477099476197",
       variables: JSON.stringify({
-        input: {
-          client_mutation_id: Math.floor(Math.random() * 17).toString(),
-          actor_id: api.getCurrentUserID(),
-          story_id: postID
-        }
+        story_id: postId,
+        actor_id: api.getCurrentUserID(),
+        client_mutation_id: Math.floor(Math.random() * 17)
       })
     };
     
@@ -453,35 +494,75 @@ async function deletePost(api, postID) {
       data = JSON.parse(data.replace('for (;;);', ''));
     }
     
-    if (data.errors) {
+    if (data?.errors) {
       throw new Error(data.errors[0]?.message || 'GraphQL error');
-    }
-    
-    // Alternative: Try using the delete endpoint
-    if (!data.data?.story_delete) {
-      try {
-        const deleteForm = {
-          story_id: postID,
-          actor_id: api.getCurrentUserID()
-        };
-        
-        await new Promise((resolve, reject) => {
-          api.httpPost('https://www.facebook.com/ajax/feed/delete.php', deleteForm, (err, res) => {
-            if (err) reject(err);
-            else resolve(res);
-          });
-        });
-      } catch (error) {
-        console.log('Delete endpoint fallback failed:', error.message);
-        // If both methods fail, throw the original error
-        throw new Error('Failed to delete post');
-      }
     }
     
     return true;
     
   } catch (error) {
     console.error('Error deleting post:', error);
-    throw error;
+    
+    // Method 2: Try using direct deletion endpoint
+    try {
+      const deleteForm = {
+        post_id: postId,
+        __a: 1
+      };
+      
+      const result = await new Promise((resolve, reject) => {
+        api.httpPost('https://www.facebook.com/ajax/feed/delete.php', deleteForm, (err, res) => {
+          if (err) reject(err);
+          else resolve(res);
+        });
+      });
+      
+      let data = result;
+      if (typeof data === 'string') {
+        data = JSON.parse(data.replace('for (;;);', ''));
+      }
+      
+      if (data?.success) {
+        return true;
+      }
+      
+      throw new Error('Delete failed');
+      
+    } catch (err2) {
+      console.error('Alternative deletion also failed:', err2);
+      throw error; // Throw original error
+    }
   }
+}
+
+// Helper function to show selected posts
+function showSelectedPosts(selectedIds, posts) {
+  let msg = `📋 **SELECTED POSTS**\n\n`;
+  
+  selectedIds.forEach((id, index) => {
+    const post = posts.find(p => (p.id || p.post_id) === id);
+    if (post) {
+      const text = post.message || post.text || "(No caption)";
+      const shortText = text.length > 40 ? text.substring(0, 40) + "..." : text;
+      msg += `${index + 1}. ${shortText}\n`;
+      msg += `   🆔 ${id}\n`;
+    }
+  });
+  
+  msg += `\n━━━━━━━━━━━━━━━━━━━\n`;
+  msg += `📊 Total selected: ${selectedIds.length} post(s)\n`;
+  msg += `⚠️ These posts will be **PERMANENTLY DELETED**!`;
+  
+  return msg;
+}
+
+function getGUID() {
+  var sectionLength = Date.now();
+  var id = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (c) {
+    var r = Math.floor((sectionLength + Math.random() * 16) % 16);
+    sectionLength = Math.floor(sectionLength / 16);
+    var _guid = (c == "x" ? r : (r & 7) | 8).toString(16);
+    return _guid;
+  });
+  return id;
 }
