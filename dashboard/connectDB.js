@@ -33,7 +33,6 @@ module.exports = async function () {
         globalData
     } = controller;
 
-    // Return everything EXCEPT botModel – now handled by Firebase
     return {
         threadModel,
         userModel,
@@ -43,5 +42,6 @@ module.exports = async function () {
         usersData,
         dashBoardData,
         globalData
+        // botModel is now handled by Firebase
     };
 };
