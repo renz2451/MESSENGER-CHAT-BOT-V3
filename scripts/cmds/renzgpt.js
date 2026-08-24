@@ -146,7 +146,7 @@ module.exports = {
     // CONTINUE WITH SELECTED MODEL
     // ============================================
 
-    await processRequest(api, event, args, message, selectedModel, messageText);
+    await processRequest(api, event, message, selectedModel, messageText);
   },
 
   onReply: async function ({ api, event, Reply, message }) {
@@ -181,7 +181,7 @@ module.exports = {
       }
 
       // Process the request with selected model
-      await processRequest(api, event, args, message, selectedModel, messageText);
+      await processRequest(api, event, message, selectedModel, messageText);
     }
   }
 };
@@ -190,7 +190,7 @@ module.exports = {
 // MAIN PROCESS REQUEST FUNCTION
 // ============================================
 
-async function processRequest(api, event, args, message, model, messageText) {
+async function processRequest(api, event, message, model, messageText) {
   const { threadID, messageID, senderID } = event;
 
   // ============================================
