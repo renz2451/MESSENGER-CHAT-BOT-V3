@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="https://cdn-uicons.flaticon.com/2.6.0/uicons-regular-rounded/css/uicons-regular-rounded.css" />
   <link rel="stylesheet" href="https://cdn-uicons.flaticon.com/2.6.0/uicons-solid-rounded/css/uicons-solid-rounded.css" />
   <style>
+    /* ===== YOUR ORIGINAL STYLES – UNCHANGED ===== */
     *,
     *::before,
     *::after {
@@ -814,6 +815,136 @@
         gap: 10px;
       }
     }
+
+    /* ===== NEW: Bot Management specific styles ===== */
+    .bot-item {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px 18px;
+      background: rgba(255, 255, 255, .03);
+      border: 1px solid rgba(255, 255, 255, .06);
+      border-radius: 14px;
+      margin-bottom: 10px;
+      transition: .2s;
+    }
+    .bot-item:hover {
+      border-color: var(--p);
+      background: rgba(124, 58, 237, .06);
+    }
+    .bot-item.active {
+      border-color: var(--g);
+      background: rgba(16, 185, 129, .08);
+    }
+    .bot-info {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .bot-name {
+      font-weight: 700;
+      font-size: 15px;
+    }
+    .bot-meta {
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .bot-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .btn-sm {
+      padding: 6px 14px;
+      font-size: 12px;
+      border-radius: 8px;
+      border: none;
+      font-weight: 600;
+      cursor: pointer;
+      transition: .2s;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn-sm.activate {
+      background: var(--g);
+      color: #fff;
+    }
+    .btn-sm.activate:hover {
+      background: #059669;
+      transform: scale(1.03);
+    }
+    .btn-sm.delete {
+      background: var(--r);
+      color: #fff;
+    }
+    .btn-sm.delete:hover {
+      background: #dc2626;
+      transform: scale(1.03);
+    }
+    .btn-sm:disabled {
+      opacity: .5;
+      cursor: not-allowed;
+      transform: none !important;
+    }
+    #botList {
+      margin-top: 12px;
+    }
+    #botList p {
+      color: var(--muted);
+      font-size: 14px;
+      padding: 12px 0;
+    }
+    .create-bot-form {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .create-bot-form .row {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .create-bot-form .row input {
+      flex: 1;
+      min-width: 180px;
+    }
+    .create-bot-form .row button {
+      padding: 10px 24px;
+      background: linear-gradient(135deg, var(--p), #5b21b6);
+      color: #fff;
+      border: none;
+      border-radius: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: .2s;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .create-bot-form .row button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(124, 58, 237, .4);
+    }
+    .create-bot-form textarea {
+      min-height: 80px;
+    }
+    .bot-status-badge {
+      font-size: 11px;
+      padding: 2px 12px;
+      border-radius: 100px;
+      font-weight: 700;
+      background: rgba(16, 185, 129, .15);
+      color: var(--g);
+      border: 1px solid rgba(16, 185, 129, .25);
+    }
+    .bot-status-badge.inactive {
+      background: rgba(100, 116, 139, .15);
+      color: var(--muted);
+      border-color: rgba(100, 116, 139, .2);
+    }
   </style>
 </head>
 <body>
@@ -852,7 +983,7 @@
       </div>
     </section>
 
-    <!-- SESSION -->
+    <!-- ===== SESSION CARD (unchanged) ===== -->
     <div class="sec-label rv"><i class="fi fi-rr-key"></i> Facebook Session</div>
     <div class="session-card rv">
       <div class="sc-head">
@@ -878,7 +1009,34 @@
       </div>
     </div>
 
-    <!-- LIVE STATS -->
+    <!-- ===== NEW: BOT MANAGEMENT SECTION ===== -->
+    <div class="sec-label rv"><i class="fi fi-rr-database"></i> Bot Management</div>
+    <div class="session-card rv">
+      <div class="sc-head">
+        <div class="sc-head-icon"><i class="fi fi-rr-layer-group"></i></div>
+        <div>
+          <div class="sc-title">Your Bots</div>
+          <div class="sc-sub">Create, activate, or delete bots. Only one bot can be active at a time.</div>
+        </div>
+      </div>
+      <div class="sc-body">
+        <!-- Create Bot Form -->
+        <div class="create-bot-form">
+          <div class="row">
+            <input type="text" id="newBotName" class="field-inp" placeholder="Bot name (optional)" />
+            <button id="createBotBtn" onclick="createBot()"><i class="fi fi-rr-plus"></i> Create Bot</button>
+          </div>
+          <textarea id="newBotFbstate" class="field-inp" placeholder='Paste fbstate JSON here for this bot...'></textarea>
+        </div>
+        <!-- Bot List -->
+        <div id="botList">
+          <p>Loading your bots...</p>
+        </div>
+        <div id="botMsg" class="sc-msg" style="display:none;"></div>
+      </div>
+    </div>
+
+    <!-- ===== LIVE STATS (unchanged) ===== -->
     <div class="sec-label rv"><i class="fi fi-rr-chart-line"></i> Live Stats</div>
     <div class="stats-row rv">
       <div class="stat-box">
@@ -903,7 +1061,7 @@
       </div>
     </div>
 
-    <!-- INFO BAR -->
+    <!-- ===== INFO BAR (unchanged) ===== -->
     <div class="sec-label rv"><i class="fi fi-rr-info"></i> System Info</div>
     <div class="status-bar rv">
       <div class="sb-item"><span class="sb-key">Prefix</span><span class="sb-val" id="iPrefix"><span class="sk" style="min-width:16px"></span></span></div>
@@ -916,7 +1074,7 @@
       <div class="sb-item"><span class="sb-key">Status</span><span class="sb-val" id="iStatus"><span class="sk"></span></span></div>
     </div>
 
-    <!-- INFO PILLS -->
+    <!-- ===== INFO PILLS (unchanged) ===== -->
     <div class="info-grid rv">
       <div class="info-pill">
         <div class="pill-dot"></div>
@@ -944,7 +1102,7 @@
       </div>
     </div>
 
-    <!-- FEATURES -->
+    <!-- ===== FEATURES (unchanged) ===== -->
     <div class="sec-label rv"><i class="fi fi-rr-star"></i> Features</div>
     <div class="feat-grid">
       <div class="feat-card rv">
@@ -979,7 +1137,7 @@
       </div>
     </div>
 
-    <!-- FOOTER -->
+    <!-- ===== FOOTER (unchanged) ===== -->
     <footer class="rv">
       <div>
         Made by <a href="https://github.com/ncazad" target="_blank">r3nz75</a>
@@ -992,7 +1150,7 @@
   </div>
 
   <script>
-    // Particles & stars (same as before)
+    // ===== PARTICLES & STARS (unchanged) =====
     (function() {
       const pc = document.getElementById('particles');
       const colors = ['#7c3aed', '#a855f7', '#06b6d4', '#ec4899', '#10b981', '#f59e0b', '#818cf8'];
@@ -1025,13 +1183,13 @@
       }
     })();
 
-    // Reveal on scroll
+    // ===== REVEAL ON SCROLL (unchanged) =====
     const rv = new IntersectionObserver(entries => {
       entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('in') });
     }, { threshold: .07, rootMargin: '0px 0px -30px 0px' });
     document.querySelectorAll('.rv').forEach(el => rv.observe(el));
 
-    // Helpers
+    // ===== HELPERS (unchanged) =====
     function fmtUp(s) {
       if (!s && s !== 0) return '—';
       const h = Math.floor(s / 3600),
@@ -1068,6 +1226,7 @@
       }
     }
 
+    // ===== LOAD STATS (unchanged) =====
     async function loadStats() {
       try {
         const r = await fetch('/stats');
@@ -1108,7 +1267,7 @@
     loadStats();
     setInterval(loadStats, 30000);
 
-    // Session submit
+    // ===== SESSION SUBMIT (unchanged) =====
     async function sendSession() {
       const key = document.getElementById('keyInp').value.trim();
       const state = document.getElementById('stateInp').value.trim();
@@ -1158,6 +1317,163 @@
       m.textContent = txt;
       m.style.display = 'block';
     }
+
+    // ============================================================
+    // ===== NEW: BOT MANAGEMENT FUNCTIONS =====
+    // ============================================================
+
+    // Fetch and display bots
+    async function loadBots() {
+      const list = document.getElementById('botList');
+      try {
+        const res = await fetch('/api/bots');
+        if (!res.ok) throw new Error('Not authenticated or server error');
+        const bots = await res.json();
+        if (bots.length === 0) {
+          list.innerHTML = '<p>No bots created yet. Create one above!</p>';
+          return;
+        }
+        let html = '';
+        bots.forEach(bot => {
+          const activeClass = bot.active ? 'active' : '';
+          const statusBadge = bot.active
+            ? '<span class="bot-status-badge">● Active</span>'
+            : '<span class="bot-status-badge inactive">○ Inactive</span>';
+          html += `
+            <div class="bot-item ${activeClass}">
+              <div class="bot-info">
+                <div class="bot-name">${escapeHtml(bot.botName || 'Unnamed Bot')} ${statusBadge}</div>
+                <div class="bot-meta">Owner: ${escapeHtml(bot.ownerFbid)} · ID: ${bot._id}</div>
+              </div>
+              <div class="bot-actions">
+                ${!bot.active ? `<button class="btn-sm activate" onclick="activateBot('${bot._id}')"><i class="fi fi-rr-play"></i> Activate</button>` : ''}
+                <button class="btn-sm delete" onclick="deleteBot('${bot._id}')"><i class="fi fi-rr-trash"></i> Delete</button>
+              </div>
+            </div>
+          `;
+        });
+        list.innerHTML = html;
+      } catch (err) {
+        list.innerHTML = `<p style="color:var(--r);">Error loading bots: ${escapeHtml(err.message)}</p>`;
+        // If unauthenticated, show a friendly message
+        if (err.message.includes('Not authenticated')) {
+          list.innerHTML = `<p>Please <a href="/dashboard/auth/your_fbid" style="color:var(--p2)">login via your Facebook ID</a> or use the admin key session.</p>`;
+        }
+      }
+    }
+
+    // Create a new bot
+    async function createBot() {
+      const name = document.getElementById('newBotName').value.trim();
+      const fbstate = document.getElementById('newBotFbstate').value.trim();
+      const msg = document.getElementById('botMsg');
+
+      if (!fbstate) {
+        showBotMsg('err', '⚠️ Please paste a valid fbstate JSON.');
+        return;
+      }
+      // Validate JSON
+      try { JSON.parse(fbstate); } catch (e) {
+        showBotMsg('err', '⚠️ Invalid JSON format. Must be a valid fbstate array.');
+        return;
+      }
+
+      const btn = document.getElementById('createBotBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fi fi-rr-spinner fi-spin"></i> Creating...';
+      msg.style.display = 'none';
+
+      try {
+        const res = await fetch('/api/bots', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ botName: name || 'My Bot', fbstate })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          showBotMsg('ok', '✅ Bot created successfully!');
+          document.getElementById('newBotName').value = '';
+          document.getElementById('newBotFbstate').value = '';
+          loadBots(); // refresh list
+        } else {
+          showBotMsg('err', '❌ ' + (data.error || 'Unknown error'));
+        }
+      } catch (err) {
+        showBotMsg('err', '❌ Network error: ' + err.message);
+      }
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fi fi-rr-plus"></i> Create Bot';
+    }
+
+    // Activate a bot
+    async function activateBot(id) {
+      if (!confirm('Activating this bot will switch the active session and restart the service. Continue?')) return;
+      const msg = document.getElementById('botMsg');
+      msg.style.display = 'none';
+
+      try {
+        const res = await fetch(`/api/bots/${id}/activate`, { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+          showBotMsg('ok', '✅ Bot activated! The service will restart shortly.');
+          setTimeout(() => location.reload(), 3000);
+        } else {
+          showBotMsg('err', '❌ ' + (data.error || 'Activation failed'));
+        }
+      } catch (err) {
+        showBotMsg('err', '❌ Network error: ' + err.message);
+      }
+    }
+
+    // Delete a bot
+    async function deleteBot(id) {
+      if (!confirm('Delete this bot permanently? This cannot be undone.')) return;
+      const msg = document.getElementById('botMsg');
+      msg.style.display = 'none';
+
+      try {
+        const res = await fetch(`/api/bots/${id}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (data.success) {
+          showBotMsg('ok', '✅ Bot deleted.');
+          loadBots();
+        } else {
+          showBotMsg('err', '❌ ' + (data.error || 'Delete failed'));
+        }
+      } catch (err) {
+        showBotMsg('err', '❌ Network error: ' + err.message);
+      }
+    }
+
+    // Helper to show messages in bot management section
+    function showBotMsg(type, text) {
+      const msg = document.getElementById('botMsg');
+      msg.className = 'sc-msg ' + (type === 'ok' ? 'ok' : 'err');
+      msg.textContent = text;
+      msg.style.display = 'block';
+      // Auto hide after 5 seconds if success
+      if (type === 'ok') {
+        setTimeout(() => { msg.style.display = 'none'; }, 5000);
+      }
+    }
+
+    // Escape HTML to prevent XSS
+    function escapeHtml(text) {
+      if (!text) return '';
+      const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+      };
+      return text.replace(/[&<>"']/g, function(m) { return map[m]; });
+    }
+
+    // Load bots on page load
+    loadBots();
+    // Refresh bot list every 30 seconds
+    setInterval(loadBots, 30000);
   </script>
 </body>
 </html>
