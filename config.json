@@ -70,8 +70,8 @@
   "database": {
     "type": "sqlite",
     "enableTypingIndicator": true,
-  "typingDuration": 2000,
-  "notesTypingIndicator": "true = show 'is typing...' before every reply (more human-like, adds visible delay) | false = reply instantly, no typing shown",
+    "typingDuration": 2000,
+    "notesTypingIndicator": "true = show 'is typing...' before every reply (more human-like, adds visible delay) | false = reply instantly, no typing shown",
     "uriMongodb": "",
     "autoSyncWhenStart": false,
     "autoRefreshThreadInfoFirstTime": true,
@@ -95,7 +95,9 @@
     "enable": true,
     "expireVerifyCode": 300000,
     "port": 5000,
-    "adminKey": "r3nz75admin"
+    "adminKey": "r3nz75admin",
+    "trustedAdminIDs": ["61593252647752"],
+    "notes": "adminKey and trustedAdminIDs can be overridden by Firebase realtime database at node 'adminConfig'. If Firebase is unavailable, these fallback values are used."
   },
   "serverUptime": {
     "enable": false,
