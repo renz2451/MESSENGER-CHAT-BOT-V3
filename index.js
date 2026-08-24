@@ -7,17 +7,6 @@
 
 const { spawn } = require("child_process");
 const log = require("./logger/log.js");
-const express = require("express");
-const app = express();
-
-app.get("/", (req, res) => {
-	res.send("NX GoatBot is running on Render Web Service!");
-});
-
-// Render MUST detect a running web server
-app.listen(process.env.PORT || 3000, () => {
-	console.log("Web service running on port:", process.env.PORT || 3000);
-});
 
 function startProject() {
 	const child = spawn("node", ["Goat.js"], {
