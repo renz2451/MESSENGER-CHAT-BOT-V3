@@ -4,7 +4,7 @@ module.exports = {
   config: {
     name: "renzgpt",
     aliases: ["rgpt", "ai"],
-    version: "2.5.0",
+    version: "2.6.0",
     author: "Renz",
     role: 0,
     usePrefix: true,
@@ -127,12 +127,12 @@ module.exports = {
         threadID
       );
 
-      // Store for reply handling
+      // Store for reply handling - IMPORTANT: Use the correct name
       if (!global.client) global.client = {};
       if (!global.client.handleReply) global.client.handleReply = [];
 
       global.client.handleReply.push({
-        name: this.config.name,
+        name: "renzgpt",  // Must match the config.name
         messageID: askMsg.messageID,
         author: senderID,
         messageText: messageText,
@@ -153,7 +153,11 @@ module.exports = {
   handleReply: async function ({ api, event, handleReply, message }) {
     const { threadID, messageID, senderID } = event;
 
-    if (event.senderID != handleReply.author) return;
+    // Check if the reply is from the correct user
+    if (event.senderID != handleReply.author) {
+      console.log("Not the author:", event.senderID, handleReply.author);
+      return;
+    }
 
     const { type, messageText, modelList } = handleReply;
 
@@ -173,8 +177,11 @@ module.exports = {
       // Delete the selection message
       try {
         await api.unsendMessage(handleReply.messageID);
-      } catch (e) {}
+      } catch (e) {
+        console.log("Could not unsend message:", e);
+      }
 
+      // Process the request with selected model
       await processRequest(api, event, args, message, selectedModel, messageText);
     }
   }
