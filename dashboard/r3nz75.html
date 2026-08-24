@@ -11,7 +11,7 @@
   <link rel="stylesheet" href="https://cdn-uicons.flaticon.com/2.6.0/uicons-regular-rounded/css/uicons-regular-rounded.css" />
   <link rel="stylesheet" href="https://cdn-uicons.flaticon.com/2.6.0/uicons-solid-rounded/css/uicons-solid-rounded.css" />
   <style>
-    /* ===== YOUR ORIGINAL STYLES – UNCHANGED ===== */
+    /* ===== FULL STYLES ===== */
     *,
     *::before,
     *::after {
@@ -45,7 +45,6 @@
       min-height: 100vh;
       overflow-x: hidden;
     }
-    /* background blobs + grid */
     .bg {
       position: fixed;
       inset: 0;
@@ -100,7 +99,6 @@
       background-size: 64px 64px;
       mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, black 40%, transparent 100%);
     }
-    /* particles & stars (keep for ambiance) */
     #particles {
       position: fixed;
       inset: 0;
@@ -164,7 +162,6 @@
         opacity: 0;
       }
     }
-    /* layout */
     .wrap {
       position: relative;
       z-index: 10;
@@ -172,7 +169,6 @@
       margin: 0 auto;
       padding: 24px 20px 80px;
     }
-    /* nav */
     nav {
       display: flex;
       align-items: center;
@@ -228,7 +224,6 @@
       transition: all .4s;
       backdrop-filter: blur(8px);
     }
-    /* hero */
     .hero {
       text-align: center;
       padding: 40px 0 70px;
@@ -326,7 +321,6 @@
       justify-content: center;
       flex-wrap: wrap;
     }
-    /* buttons */
     .btn {
       display: inline-flex;
       align-items: center;
@@ -373,7 +367,6 @@
       transform: translateY(-3px);
       box-shadow: 0 0 24px rgba(124, 58, 237, .2);
     }
-    /* section label */
     .sec-label {
       display: flex;
       align-items: center;
@@ -397,7 +390,6 @@
       height: 1px;
       background: linear-gradient(90deg, var(--border), transparent);
     }
-    /* stats */
     .stats-row {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
@@ -464,7 +456,6 @@
       letter-spacing: .08em;
       text-transform: uppercase;
     }
-    /* info pills */
     .info-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
@@ -513,7 +504,6 @@
       -webkit-text-fill-color: transparent;
       background-clip: text;
     }
-    /* session card */
     .session-card {
       background: var(--card);
       backdrop-filter: blur(20px);
@@ -623,7 +613,6 @@
       cursor: not-allowed;
       transform: none;
     }
-    /* features */
     .feat-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
@@ -672,7 +661,6 @@
       color: var(--muted);
       line-height: 1.7;
     }
-    /* status bar */
     .status-bar {
       display: flex;
       align-items: center;
@@ -731,7 +719,6 @@
       font-size: 13px;
       color: var(--txt);
     }
-    /* footer */
     footer {
       text-align: center;
       padding-top: 40px;
@@ -760,7 +747,6 @@
     footer a:hover {
       color: var(--c);
     }
-    /* shimmer */
     .sk {
       display: inline-block;
       background: linear-gradient(90deg, rgba(255, 255, 255, .04) 25%, rgba(124, 58, 237, .15) 50%, rgba(255, 255, 255, .04) 75%);
@@ -779,7 +765,6 @@
         background-position: -200%;
       }
     }
-    /* reveal */
     .rv {
       opacity: 0;
       transform: translateY(24px);
@@ -816,7 +801,7 @@
       }
     }
 
-    /* ===== NEW: Bot Management specific styles ===== */
+    /* Bot Management extras */
     .bot-item {
       display: flex;
       flex-wrap: wrap;
@@ -945,6 +930,28 @@
       color: var(--muted);
       border-color: rgba(100, 116, 139, .2);
     }
+    /* Admin panel inside same card */
+    #adminPanel {
+      margin-top: 20px;
+      border-top: 1px solid var(--border);
+      padding-top: 20px;
+    }
+    #adminPanel h3 {
+      font-size: 16px;
+      font-weight: 800;
+      margin-bottom: 12px;
+      color: var(--p2);
+    }
+    #adminList div {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border);
+      font-size: 14px;
+    }
+    #adminList div span {
+      font-family: 'JetBrains Mono', monospace;
+    }
   </style>
 </head>
 <body>
@@ -983,7 +990,7 @@
       </div>
     </section>
 
-    <!-- ===== SESSION CARD (unchanged) ===== -->
+    <!-- ===== SESSION CARD ===== -->
     <div class="sec-label rv"><i class="fi fi-rr-key"></i> Facebook Session</div>
     <div class="session-card rv">
       <div class="sc-head">
@@ -1009,7 +1016,7 @@
       </div>
     </div>
 
-    <!-- ===== NEW: BOT MANAGEMENT SECTION ===== -->
+    <!-- ===== BOT MANAGEMENT CARD (with Admin Panel) ===== -->
     <div class="sec-label rv"><i class="fi fi-rr-database"></i> Bot Management</div>
     <div class="session-card rv">
       <div class="sc-head">
@@ -1029,14 +1036,22 @@
           <textarea id="newBotFbstate" class="field-inp" placeholder='Paste fbstate JSON here for this bot...'></textarea>
         </div>
         <!-- Bot List -->
-        <div id="botList">
-          <p>Loading your bots...</p>
-        </div>
+        <div id="botList"><p>Loading your bots...</p></div>
         <div id="botMsg" class="sc-msg" style="display:none;"></div>
+
+        <!-- ===== ADMIN PANEL (only visible to Super Admin) ===== -->
+        <div id="adminPanel" style="display:none;">
+          <h3>👑 Manage Admins</h3>
+          <div style="display:flex; gap:10px; margin-bottom:10px;">
+            <input type="text" id="newAdminId" class="field-inp" placeholder="Enter Facebook ID to authorize" />
+            <button onclick="addAdmin()" class="btn-sm activate">➕ Add Admin</button>
+          </div>
+          <div id="adminList"><p>Loading admins...</p></div>
+        </div>
       </div>
     </div>
 
-    <!-- ===== LIVE STATS (unchanged) ===== -->
+    <!-- ===== LIVE STATS ===== -->
     <div class="sec-label rv"><i class="fi fi-rr-chart-line"></i> Live Stats</div>
     <div class="stats-row rv">
       <div class="stat-box">
@@ -1061,7 +1076,7 @@
       </div>
     </div>
 
-    <!-- ===== INFO BAR (unchanged) ===== -->
+    <!-- ===== INFO BAR ===== -->
     <div class="sec-label rv"><i class="fi fi-rr-info"></i> System Info</div>
     <div class="status-bar rv">
       <div class="sb-item"><span class="sb-key">Prefix</span><span class="sb-val" id="iPrefix"><span class="sk" style="min-width:16px"></span></span></div>
@@ -1074,7 +1089,7 @@
       <div class="sb-item"><span class="sb-key">Status</span><span class="sb-val" id="iStatus"><span class="sk"></span></span></div>
     </div>
 
-    <!-- ===== INFO PILLS (unchanged) ===== -->
+    <!-- ===== INFO PILLS ===== -->
     <div class="info-grid rv">
       <div class="info-pill">
         <div class="pill-dot"></div>
@@ -1102,7 +1117,7 @@
       </div>
     </div>
 
-    <!-- ===== FEATURES (unchanged) ===== -->
+    <!-- ===== FEATURES ===== -->
     <div class="sec-label rv"><i class="fi fi-rr-star"></i> Features</div>
     <div class="feat-grid">
       <div class="feat-card rv">
@@ -1137,7 +1152,7 @@
       </div>
     </div>
 
-    <!-- ===== FOOTER (unchanged) ===== -->
+    <!-- ===== FOOTER ===== -->
     <footer class="rv">
       <div>
         Made by <a href="https://github.com/ncazad" target="_blank">r3nz75</a>
@@ -1150,7 +1165,7 @@
   </div>
 
   <script>
-    // ===== PARTICLES & STARS (unchanged) =====
+    // ===== PARTICLES & STARS =====
     (function() {
       const pc = document.getElementById('particles');
       const colors = ['#7c3aed', '#a855f7', '#06b6d4', '#ec4899', '#10b981', '#f59e0b', '#818cf8'];
@@ -1183,13 +1198,13 @@
       }
     })();
 
-    // ===== REVEAL ON SCROLL (unchanged) =====
+    // ===== REVEAL ON SCROLL =====
     const rv = new IntersectionObserver(entries => {
       entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('in') });
     }, { threshold: .07, rootMargin: '0px 0px -30px 0px' });
     document.querySelectorAll('.rv').forEach(el => rv.observe(el));
 
-    // ===== HELPERS (unchanged) =====
+    // ===== HELPERS =====
     function fmtUp(s) {
       if (!s && s !== 0) return '—';
       const h = Math.floor(s / 3600),
@@ -1198,7 +1213,6 @@
       if (m > 0) return m + 'm';
       return Math.floor(s) + 's';
     }
-
     function fmtNum(n) { return n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n) }
 
     function setStatus(on) {
@@ -1226,7 +1240,7 @@
       }
     }
 
-    // ===== LOAD STATS (unchanged) =====
+    // ===== LOAD STATS =====
     async function loadStats() {
       try {
         const r = await fetch('/stats');
@@ -1267,7 +1281,7 @@
     loadStats();
     setInterval(loadStats, 30000);
 
-    // ===== SESSION SUBMIT (unchanged) =====
+    // ===== SESSION SUBMIT =====
     async function sendSession() {
       const key = document.getElementById('keyInp').value.trim();
       const state = document.getElementById('stateInp').value.trim();
@@ -1318,10 +1332,7 @@
       m.style.display = 'block';
     }
 
-    // ============================================================
-    // ===== NEW: BOT MANAGEMENT FUNCTIONS =====
-    // ============================================================
-
+    // ===== BOT MANAGEMENT FUNCTIONS =====
     async function loadBots() {
       const list = document.getElementById('botList');
       try {
@@ -1342,11 +1353,11 @@
             <div class="bot-item ${activeClass}">
               <div class="bot-info">
                 <div class="bot-name">${escapeHtml(bot.botName || 'Unnamed Bot')} ${statusBadge}</div>
-                <div class="bot-meta">Owner: ${escapeHtml(bot.ownerFbid)} · ID: ${bot._id}</div>
+                <div class="bot-meta">Owner: ${escapeHtml(bot.ownerFbid)} · ID: ${bot.id}</div>
               </div>
               <div class="bot-actions">
-                ${!bot.active ? `<button class="btn-sm activate" onclick="activateBot('${bot._id}')"><i class="fi fi-rr-play"></i> Activate</button>` : ''}
-                <button class="btn-sm delete" onclick="deleteBot('${bot._id}')"><i class="fi fi-rr-trash"></i> Delete</button>
+                ${!bot.active ? `<button class="btn-sm activate" onclick="activateBot('${bot.id}')"><i class="fi fi-rr-play"></i> Activate</button>` : ''}
+                <button class="btn-sm delete" onclick="deleteBot('${bot.id}')"><i class="fi fi-rr-trash"></i> Delete</button>
               </div>
             </div>
           `;
@@ -1355,7 +1366,7 @@
       } catch (err) {
         list.innerHTML = `<p style="color:var(--r);">Error loading bots: ${escapeHtml(err.message)}</p>`;
         if (err.message.includes('Not authenticated')) {
-          list.innerHTML = `<p>Please <a href="/dashboard/auth/your_fbid" style="color:var(--p2)">login via your Facebook ID</a> or use the admin key session.</p>`;
+          list.innerHTML = `<p>Please <a href="/dashboard/auth/your_fbid" style="color:var(--p2)">login via your Facebook ID</a>.</p>`;
         }
       }
     }
@@ -1449,6 +1460,70 @@
       }
     }
 
+    // ===== ADMIN MANAGEMENT =====
+    async function loadAdmins() {
+      try {
+        const res = await fetch('/api/admins');
+        if (!res.ok) throw new Error('Not authorized');
+        const data = await res.json();
+        const list = document.getElementById('adminList');
+        if (data.admins && data.admins.length) {
+          list.innerHTML = data.admins.map(id => `
+            <div>
+              <span>${escapeHtml(id)} ${data.isSuperAdmin === id ? '⭐' : ''}</span>
+              ${id !== data.isSuperAdmin ? `<button onclick="removeAdmin('${id}')" class="btn-sm delete">Remove</button>` : ''}
+            </div>
+          `).join('');
+        } else {
+          list.innerHTML = '<p>No admins yet.</p>';
+        }
+      } catch (e) {
+        console.error(e);
+        document.getElementById('adminList').innerHTML = '<p>Error loading admins.</p>';
+      }
+    }
+
+    async function addAdmin() {
+      const id = document.getElementById('newAdminId').value.trim();
+      if (!id) return alert('Enter a Facebook ID');
+      const res = await fetch('/api/admins', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fbid: id })
+      });
+      const data = await res.json();
+      if (data.success) {
+        document.getElementById('newAdminId').value = '';
+        loadAdmins();
+      } else {
+        alert('Error: ' + data.error);
+      }
+    }
+
+    async function removeAdmin(id) {
+      if (!confirm(`Remove ${id}?`)) return;
+      const res = await fetch('/api/admins', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fbid: id })
+      });
+      const data = await res.json();
+      if (data.success) loadAdmins();
+      else alert('Error: ' + data.error);
+    }
+
+    async function checkAdminStatus() {
+      try {
+        const res = await fetch('/api/admins');
+        const data = await res.json();
+        const panel = document.getElementById('adminPanel');
+        if (data.isSuperAdmin) {
+          panel.style.display = 'block';
+        }
+      } catch (e) {}
+    }
+
+    // ===== HELPERS =====
     function escapeHtml(text) {
       if (!text) return '';
       const map = {
@@ -1461,9 +1536,12 @@
       return text.replace(/[&<>"']/g, function(m) { return map[m]; });
     }
 
-    // Load bots on page load
+    // ===== INIT =====
+    checkAdminStatus();
+    loadAdmins();
     loadBots();
     setInterval(loadBots, 30000);
+    setInterval(loadAdmins, 30000);
   </script>
 </body>
 </html>
