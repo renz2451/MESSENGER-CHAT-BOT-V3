@@ -4,7 +4,6 @@ const admin = require('firebase-admin');
 // Read service account from environment variable (recommended for Render)
 let serviceAccount;
 if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-  // If stored as JSON string in environment variable
   serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
 } else {
   // Fallback for local development – you can put the JSON directly (but don't commit it)
@@ -15,7 +14,7 @@ if (process.env.FIREBASE_SERVICE_ACCOUNT) {
 if (!admin.apps.length) {
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
-    databaseURL: 'https://ddos-c147a-default-rtdb.firebaseio.com' // from your project
+    databaseURL: 'https://ddos-c147a-default-rtdb.firebaseio.com'
   });
 }
 
@@ -23,7 +22,6 @@ const db = admin.database();
 
 // ---- Bot Model using Firebase Realtime DB ----
 const botModel = {
-  // Create a new bot
   create: async (data) => {
     const ref = db.ref('bots').push();
     await ref.set({
@@ -34,7 +32,6 @@ const botModel = {
     return { id: ref.key, ...data };
   },
 
-  // Get all bots (optionally filter by owner)
   getAll: async (ownerFbid = null) => {
     const snapshot = await db.ref('bots').once('value');
     const bots = snapshot.val() || {};
@@ -45,7 +42,6 @@ const botModel = {
     return entries;
   },
 
-  // Get a single bot by ID
   getById: async (id) => {
     const snapshot = await db.ref(`bots/${id}`).once('value');
     const bot = snapshot.val();
@@ -53,17 +49,29 @@ const botModel = {
     return { id, ...bot };
   },
 
-  // Update a bot
   update: async (id, data) => {
     await db.ref(`bots/${id}`).update(data);
     return await botModel.getById(id);
   },
 
-  // Delete a bot
   delete: async (id) => {
     await db.ref(`bots/${id}`).remove();
     return true;
   }
 };
 
-module.exports = { botModel };
+// ---- Admin configuration from Firebase ----
+const getAdminConfig = async () => {
+  const snapshot = await db.ref('adminConfig').once('value');
+  const config = snapshot.val() || {};
+  return {
+    adminKey: config.adminKey || null,
+    trustedAdminIDs: config.trustedAdminIDs || []
+  };
+};
+
+const setAdminConfig = async (data) => {
+  await db.ref('adminConfig').update(data);
+};
+
+module.exports = { botModel, getAdminConfig, setAdminConfig };
