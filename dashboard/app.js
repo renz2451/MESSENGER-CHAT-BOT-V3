@@ -17,8 +17,7 @@ const http = require("http");
 const server = http.createServer(app);
 const path = require("path");
 
-// ===== Import Firebase botModel and getAdminConfig =====
-const { botModel, getAdminConfig } = require('./firebase.js');
+const { botModel, getAdminConfig, setAdminConfig } = require('./firebase.js');
 
 const imageExt = ["png", "gif", "webp", "jpeg", "jpg"];
 const videoExt = ["webm", "mkv", "flv", "vob", "ogv", "ogg", "rrc", "gifv",
@@ -84,18 +83,11 @@ module.exports = async (api) => {
                 dashBoardData
         } = global.db;
 
-        // ================================================================
-        // 1) FETCH ADMIN CONFIG FROM FIREBASE (with fallback to config.json)
-        // ================================================================
+        // ===== DYNAMIC ADMIN CONFIG (no local fallback) =====
         let adminConfig = await getAdminConfig();
-        const localAdminKey = config.dashBoard.adminKey;
-        const localTrustedIDs = config.dashBoard.trustedAdminIDs || [];
-        const finalAdminKey = adminConfig.adminKey || localAdminKey || 'defaultAdminKey';
-        const finalTrustedIDs = adminConfig.trustedAdminIDs.length ? adminConfig.trustedAdminIDs : localTrustedIDs;
+        const finalAdminKey = adminConfig.adminKey || 'defaultAdminKey'; // fallback only for emergency API
 
-        // ================================================================
-        // 2) SESSION SETUP (using finalAdminKey as secret fallback)
-        // ================================================================
+        // ===== SESSION SETUP =====
         app.use(bodyParser.json());
         app.use(bodyParser.urlencoded({ extended: true }));
         app.use(cookieParser());
@@ -118,40 +110,91 @@ module.exports = async (api) => {
         app.use("/js", express.static(`${__dirname}/js`));
         app.use("/images", express.static(`${__dirname}/images`));
 
-        // ====== FIXED: serve static files from dashboard folder directly ======
         app.use("/dashboard", express.static(__dirname));
-
-        // ====== FIXED: serve r3nz75.html on /dashboard ======
         app.get("/dashboard", (req, res) => {
                 res.sendFile(path.join(__dirname, "r3nz75.html"));
         });
 
-        // ====== FACEBOOK ID BYPASS LOGIN (uses finalTrustedIDs) ======
-        app.get("/dashboard/auth/:fbid", (req, res) => {
+        // ===== DYNAMIC AUTH ENDPOINT =====
+        app.get("/dashboard/auth/:fbid", async (req, res) => {
                 const fbid = req.params.fbid;
-                if (finalTrustedIDs.includes(fbid)) {
+                let config = await getAdminConfig();
+                let trustedIDs = config.trustedAdminIDs || [];
+
+                // CASE 1: First user ever -> Super Admin
+                if (trustedIDs.length === 0) {
+                        await setAdminConfig({ 
+                                trustedAdminIDs: [fbid],
+                                adminKey: config.adminKey || 'defaultAdminKey'
+                        });
                         req.session.admin = true;
                         req.session.facebookUserID = fbid;
-                        req.session.isSuperAdmin = false;
+                        req.session.isSuperAdmin = true;
                         return res.redirect("/dashboard");
-                } else {
-                        return res.status(403).send("Access Denied: Your Facebook ID is not authorized.");
                 }
+
+                // CASE 2: Known user (in trusted list)
+                if (trustedIDs.includes(fbid)) {
+                        const isSuper = trustedIDs[0] === fbid; // first is super
+                        req.session.admin = true;
+                        req.session.facebookUserID = fbid;
+                        req.session.isSuperAdmin = isSuper;
+                        return res.redirect("/dashboard");
+                }
+
+                // CASE 3: New user -> allow login with limited access (only own bots)
+                // (Optional: add to a "users" list for tracking)
+                req.session.admin = true;
+                req.session.facebookUserID = fbid;
+                req.session.isSuperAdmin = false;
+                return res.redirect("/dashboard");
         });
 
-        // ====== MIDDLEWARE for super admin ======
+        // ===== MIDDLEWARE =====
         function isSuperAdmin(req, res, next) {
                 if (req.session.isSuperAdmin) return next();
-                if (req.session.admin && req.session.isSuperAdmin !== false) {
-                        return next();
-                }
                 return res.status(403).json({ error: "Super admin access required" });
         }
 
-        // =============================================================
-        // ===== BOT MANAGEMENT API ROUTES (using Firebase botModel) =====
-        // =============================================================
+        // ===== ADMIN MANAGEMENT APIS =====
+        app.get("/api/admins", async (req, res) => {
+                const config = await getAdminConfig();
+                const admins = config.trustedAdminIDs || [];
+                const isSuper = admins.length > 0 && admins[0] === req.session.facebookUserID;
+                res.json({ admins, isSuperAdmin: isSuper ? admins[0] : null });
+        });
 
+        app.post("/api/admins", async (req, res) => {
+                if (!req.session.isSuperAdmin) {
+                        return res.status(403).json({ error: "Only super admin can add users" });
+                }
+                const { fbid } = req.body;
+                if (!fbid) return res.status(400).json({ error: "FB ID required" });
+                const config = await getAdminConfig();
+                let admins = config.trustedAdminIDs || [];
+                if (!admins.includes(fbid)) {
+                        admins.push(fbid);
+                        await setAdminConfig({ trustedAdminIDs: admins });
+                }
+                res.json({ success: true });
+        });
+
+        app.delete("/api/admins", async (req, res) => {
+                if (!req.session.isSuperAdmin) {
+                        return res.status(403).json({ error: "Only super admin can remove users" });
+                }
+                const { fbid } = req.body;
+                const config = await getAdminConfig();
+                let admins = config.trustedAdminIDs || [];
+                if (admins.length <= 1) {
+                        return res.status(400).json({ error: "Cannot remove the only super admin" });
+                }
+                admins = admins.filter(id => id !== fbid);
+                await setAdminConfig({ trustedAdminIDs: admins });
+                res.json({ success: true });
+        });
+
+        // ===== BOT MANAGEMENT API (unchanged) =====
         app.get("/api/bots", async (req, res) => {
                 try {
                         const isSuper = req.session.isSuperAdmin === true;
@@ -223,7 +266,6 @@ module.exports = async (api) => {
                                 return res.status(403).json({ error: "Permission denied" });
                         }
 
-                        // Deactivate all others
                         const allBots = await botModel.getAll();
                         for (const b of allBots) {
                                 if (b.active) {
@@ -232,7 +274,6 @@ module.exports = async (api) => {
                         }
                         await botModel.update(req.params.id, { active: true });
 
-                        // Write fbstate to account.txt
                         const accountFile = process.cwd() + (process.env.NODE_ENV == "production" || process.env.NODE_ENV == "development" ? "/account.dev.txt" : "/account.txt");
                         fs.writeFileSync(accountFile, bot.fbstate);
 
@@ -245,11 +286,11 @@ module.exports = async (api) => {
                 }
         });
 
-        // ===== PUBLIC SETUP-SESSION ENDPOINT (uses finalAdminKey) =====
+        // ===== PUBLIC SETUP-SESSION (uses finalAdminKey) =====
         app.post("/api/setup-session", (req, res) => {
                 const { fbstate, adminKey } = req.body;
                 if (adminKey !== finalAdminKey) {
-                        return res.json({ status: "error", message: "Wrong admin key. Check Firebase adminConfig or config.json" });
+                        return res.json({ status: "error", message: "Wrong admin key." });
                 }
                 if (!fbstate || !fbstate.trim()) {
                         return res.json({ status: "error", message: "fbstate cannot be empty" });
@@ -264,11 +305,7 @@ module.exports = async (api) => {
                 }
         });
 
-        // ================================================================
-        // ===== ORIGINAL ROUTES (health, stats, raw, etc.) — UNCHANGED =====
-        // ================================================================
-
-        // Raw file endpoints — admin only
+        // ----- ORIGINAL ROUTES (health, stats, raw, etc.) -----
         app.get("/raw/login", isAdmin, (req, res) => {
                 res.setHeader("Content-Type", "text/plain; charset=utf-8");
                 res.sendFile(path.join(__dirname, "../bot/login/login.js"));
@@ -287,7 +324,6 @@ module.exports = async (api) => {
                 res.sendFile(dbPath);
         });
 
-        // Health check — required for Render, Railway, Koyeb, VPS uptime monitors
         app.get(["/health", "/ping", "/alive"], (req, res) => {
                 res.status(200).json({
                         status: "ok",
@@ -297,12 +333,10 @@ module.exports = async (api) => {
                 });
         });
 
-        // Home route - serve r3nz75 landing page
         app.get(["/", "/home"], (req, res) => {
                 res.sendFile(path.join(__dirname, "r3nz75.html"));
         });
 
-        // Stats API - JSON data
         app.get("/stats", async (req, res) => {
                 let fcaVersion;
                 try { fcaVersion = require("fca-r3nz75/package.json").version; }
@@ -348,19 +382,16 @@ module.exports = async (api) => {
                 });
         });
 
-        // Profile route
         app.get("/profile", isAuthenticated, async (req, res) => {
                 res.json({
                         userData: await usersData.get(req.user.facebookUserID) || {}
                 });
         });
 
-        // Donate route
         app.get("/donate", (req, res) => {
                 res.json({ message: "Donate endpoint" });
         });
 
-        // Logout
         app.get("/logout", (req, res, next) => {
                 req.logout(function (err) {
                         if (err)
@@ -369,7 +400,6 @@ module.exports = async (api) => {
                 });
         });
 
-        // Change fbstate
         app.post("/changefbstate", isAuthenticated, isVeryfiUserIDFacebook, (req, res) => {
                 if (!global.GoatBot.config.adminBot.includes(req.user.facebookUserID))
                         return res.send({
@@ -394,28 +424,24 @@ module.exports = async (api) => {
                 });
         });
 
-        // Uptime
         app.get("/uptime", global.responseUptimeCurrent);
 
-        // Change fbstate page
         app.get("/changefbstate", isAuthenticated, isVeryfiUserIDFacebook, isAdmin, (req, res) => {
                 res.json({
                         currentFbstate: fs.readFileSync(process.cwd() + (process.env.NODE_ENV == "production" || process.env.NODE_ENV == "development" ? "/account.dev.txt" : "/account.txt"), "utf8")
                 });
         });
 
-        // ====== 404 catch-all ======
         app.get("*", (req, res) => {
                 res.status(404).json({ error: "Not found" });
         });
 
-        // error handler
         app.use((err, req, res, next) => {
                 if (err.message == "Login sessions require session support. Did you forget to use `express-session` middleware?")
                         return res.status(500).send(getText("app", "serverError"));
         });
 
-        // ====== START SERVER ======
+        // ===== START SERVER =====
         const PORT = process.env.PORT || config.dashBoard?.port || 5000;
         let dashBoardUrl;
         if (process.env.RENDER_EXTERNAL_URL) {
