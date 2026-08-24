@@ -127,13 +127,12 @@ module.exports = {
         threadID
       );
 
-      // Store for reply handling - IMPORTANT: Use the correct name
-      if (!global.client) global.client = {};
-      if (!global.client.handleReply) global.client.handleReply = [];
+      // Store for reply handling using GoatBot.onReply (your system's way)
+      if (!global.GoatBot) global.GoatBot = {};
+      if (!global.GoatBot.onReply) global.GoatBot.onReply = new Map();
 
-      global.client.handleReply.push({
-        name: "renzgpt",  // Must match the config.name
-        messageID: askMsg.messageID,
+      global.GoatBot.onReply.set(askMsg.messageID, {
+        commandName: this.config.name,
         author: senderID,
         messageText: messageText,
         modelList: modelList,
@@ -150,16 +149,16 @@ module.exports = {
     await processRequest(api, event, args, message, selectedModel, messageText);
   },
 
-  handleReply: async function ({ api, event, handleReply, message }) {
+  onReply: async function ({ api, event, Reply, message }) {
     const { threadID, messageID, senderID } = event;
 
     // Check if the reply is from the correct user
-    if (event.senderID != handleReply.author) {
-      console.log("Not the author:", event.senderID, handleReply.author);
+    if (event.senderID != Reply.author) {
+      console.log("Not the author:", event.senderID, Reply.author);
       return;
     }
 
-    const { type, messageText, modelList } = handleReply;
+    const { type, messageText, modelList } = Reply;
 
     if (type === "chooseModel") {
       const choice = parseInt(event.body.trim());
@@ -176,7 +175,7 @@ module.exports = {
 
       // Delete the selection message
       try {
-        await api.unsendMessage(handleReply.messageID);
+        await api.unsendMessage(Reply.messageID);
       } catch (e) {
         console.log("Could not unsend message:", e);
       }
