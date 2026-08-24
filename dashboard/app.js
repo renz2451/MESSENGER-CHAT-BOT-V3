@@ -150,11 +150,28 @@ module.exports = async (api) => {
                 return res.redirect("/dashboard");
         });
 
-        // ===== MIDDLEWARE =====
-        function isSuperAdmin(req, res, next) {
-                if (req.session.isSuperAdmin) return next();
-                return res.status(403).json({ error: "Super admin access required" });
+        // ===== MIDDLEWARE (originally from middleware/index.js) =====
+
+        // Define the checkAuthConfigDashboardOfThread function (used by middleware)
+        async function checkAuthConfigDashboardOfThread(threadData, userID) {
+                if (!isNaN(threadData))
+                        threadData = await threadsData.get(threadData);
+                return threadData.adminIDs?.includes(userID) || threadData.members?.some(m => m.userID == userID && m.permissionConfigDashboard == true) || false;
         }
+
+        // Import the middleware factory
+        const middleWare = require("./middleware/index.js")(checkAuthConfigDashboardOfThread);
+
+        // Destructure middleware functions
+        const {
+                unAuthenticated,
+                isWaitVerifyAccount,
+                isAuthenticated,
+                isAdmin,
+                isVeryfiUserIDFacebook,
+                checkHasAndInThread,
+                middlewareCheckAuthConfigDashboardOfThread
+        } = middleWare;
 
         // ===== ADMIN MANAGEMENT APIS =====
         app.get("/api/admins", async (req, res) => {
