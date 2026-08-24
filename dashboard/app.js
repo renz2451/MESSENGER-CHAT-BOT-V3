@@ -107,12 +107,14 @@ module.exports = async (api) => {
         app.use("/js", express.static(`${__dirname}/js`));
         app.use("/images", express.static(`${__dirname}/images`));
 
-        // dashboard static folder - index.html serve হবে
-        app.use("/dashboard", express.static(path.join(__dirname, "dashboard")));
+        // ========== FIXED: serve static files from the dashboard folder directly ==========
+        // Old: app.use("/dashboard", express.static(path.join(__dirname, "dashboard")));
+        app.use("/dashboard", express.static(__dirname));
 
-        // dashboard route - explicitly index.html serve করো
+        // ========== FIXED: serve index.html from the dashboard folder directly ==========
+        // Old: app.get("/dashboard", (req, res) => { res.sendFile(path.join(__dirname, "dashboard", "index.html")); });
         app.get("/dashboard", (req, res) => {
-                res.sendFile(path.join(__dirname, "dashboard", "index.html"));
+                res.sendFile(path.join(__dirname, "index.html"));
         });
 
         require("./passport-config.js")(Passport, dashBoardData, bcrypt);
