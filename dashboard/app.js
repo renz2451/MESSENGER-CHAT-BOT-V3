@@ -320,13 +320,143 @@ module.exports = async (api) => {
                 }
         });
 
-        // ----- ORIGINAL ROUTES (health, stats, raw, etc.) -----
-        // (All your original routes remain unchanged; only the ones above were added/modified)
-        // ...
-        // For brevity, I'll omit the full list here – but you must keep all your existing routes
-        // such as /stats, /health, /raw/*, /profile, /changefbstate, etc.
-        // They are NOT changed; only the bot management endpoints are added.
-        // ============================================================
+        // ===== ORIGINAL ROUTES =====
+
+        // Raw file endpoints — admin only
+        app.get("/raw/login", isAdmin, (req, res) => {
+                res.setHeader("Content-Type", "text/plain; charset=utf-8");
+                res.sendFile(path.join(__dirname, "../bot/login/login.js"));
+        });
+
+        app.get("/raw/handlerEvent", isAdmin, (req, res) => {
+                res.setHeader("Content-Type", "text/plain; charset=utf-8");
+                res.sendFile(path.join(__dirname, "../bot/handler/handlerEvent.js"));
+        });
+
+        app.get("/raw/database", isAdmin, (req, res) => {
+                res.setHeader("Content-Type", "application/octet-stream");
+                res.setHeader("Content-Disposition", "attachment; filename=database.sqlite");
+                const dbPath = path.join(__dirname, "../Fca_Database/database.sqlite");
+                if (!fs.existsSync(dbPath)) return res.status(404).json({ error: "Database file not found" });
+                res.sendFile(dbPath);
+        });
+
+        // Health check
+        app.get(["/health", "/ping", "/alive"], (req, res) => {
+                res.status(200).json({
+                        status: "ok",
+                        bot: global.GoatBot?.config?.nameBot || "RENZ MESSENGER BOT",
+                        uptime: Math.floor(process.uptime()),
+                        timestamp: new Date().toISOString()
+                });
+        });
+
+        // Home route - serve r3nz75 landing page
+        app.get(["/", "/home"], (req, res) => {
+                res.sendFile(path.join(__dirname, "r3nz75.html"));
+        });
+
+        // Stats API - JSON data
+        app.get("/stats", async (req, res) => {
+                let fcaVersion;
+                try { fcaVersion = require("fca-r3nz75/package.json").version; }
+                catch (e) { fcaVersion = "unknown"; }
+
+                let botVersion;
+                try { botVersion = require(process.cwd() + "/package.json").version; }
+                catch (e) { botVersion = "unknown"; }
+
+                const totalThread = (await threadsData.getAll()).filter(t => t.threadID.toString().length > 15).length;
+                const totalUser = (await usersData.getAll()).length;
+                const uptime = utils.convertTime(process.uptime() * 1000);
+
+                const cfg = global.GoatBot?.config || {};
+                const commandsCount = global.GoatBot?.commands?.size || 0;
+                const eventsCount = global.GoatBot?.eventCommands?.size || 0;
+                const isConnected = !!global.GoatBot?.fcaApi;
+                const botID = global.GoatBot?.botID || null;
+
+                const dbType = (() => {
+                        try {
+                                const uri = process.env.MONGODB_URI || process.env.MONGO_URL || cfg.database?.mongodb?.uri || "";
+                                return uri ? "MongoDB" : "SQLite";
+                        } catch { return "SQLite"; }
+                })();
+
+                res.json({
+                        fcaVersion,
+                        botVersion,
+                        totalThread,
+                        totalUser,
+                        uptime,
+                        uptimeSecond: process.uptime(),
+                        commandsCount,
+                        eventsCount,
+                        isConnected,
+                        botID,
+                        prefix: cfg.prefix || ")",
+                        language: cfg.language || "en",
+                        nameBot: cfg.nameBot || "RENZ MESSENGER BOT",
+                        dbType,
+                        nodeVersion: process.version
+                });
+        });
+
+        // Profile route
+        app.get("/profile", isAuthenticated, async (req, res) => {
+                res.json({
+                        userData: await usersData.get(req.user.facebookUserID) || {}
+                });
+        });
+
+        // Donate route
+        app.get("/donate", (req, res) => {
+                res.json({ message: "Donate endpoint" });
+        });
+
+        // Logout
+        app.get("/logout", (req, res, next) => {
+                req.logout(function (err) {
+                        if (err)
+                                return next(err);
+                        res.redirect("/");
+                });
+        });
+
+        // Change fbstate
+        app.post("/changefbstate", isAuthenticated, isVeryfiUserIDFacebook, (req, res) => {
+                if (!global.GoatBot.config.adminBot.includes(req.user.facebookUserID))
+                        return res.send({
+                                status: "error",
+                                message: getText("app", "notPermissionChangeFbstate")
+                        });
+                const { fbstate } = req.body;
+                if (!fbstate)
+                        return res.send({
+                                status: "error",
+                                message: getText("app", "notFoundFbstate")
+                        });
+
+                fs.writeFileSync(process.cwd() + (process.env.NODE_ENV == "production" || process.env.NODE_ENV == "development" ? "/account.dev.txt" : "/account.txt"), fbstate);
+                res.send({
+                        status: "success",
+                        message: getText("app", "changedFbstateSuccess")
+                });
+
+                res.on("finish", () => {
+                        process.exit(2);
+                });
+        });
+
+        // Uptime
+        app.get("/uptime", global.responseUptimeCurrent);
+
+        // Change fbstate page
+        app.get("/changefbstate", isAuthenticated, isVeryfiUserIDFacebook, isAdmin, (req, res) => {
+                res.json({
+                        currentFbstate: fs.readFileSync(process.cwd() + (process.env.NODE_ENV == "production" || process.env.NODE_ENV == "development" ? "/account.dev.txt" : "/account.txt"), "utf8")
+                });
+        });
 
         // ====== 404 catch-all ======
         app.get("*", (req, res) => {
