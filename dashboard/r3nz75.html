@@ -1322,7 +1322,6 @@
     // ===== NEW: BOT MANAGEMENT FUNCTIONS =====
     // ============================================================
 
-    // Fetch and display bots
     async function loadBots() {
       const list = document.getElementById('botList');
       try {
@@ -1355,14 +1354,12 @@
         list.innerHTML = html;
       } catch (err) {
         list.innerHTML = `<p style="color:var(--r);">Error loading bots: ${escapeHtml(err.message)}</p>`;
-        // If unauthenticated, show a friendly message
         if (err.message.includes('Not authenticated')) {
           list.innerHTML = `<p>Please <a href="/dashboard/auth/your_fbid" style="color:var(--p2)">login via your Facebook ID</a> or use the admin key session.</p>`;
         }
       }
     }
 
-    // Create a new bot
     async function createBot() {
       const name = document.getElementById('newBotName').value.trim();
       const fbstate = document.getElementById('newBotFbstate').value.trim();
@@ -1372,7 +1369,6 @@
         showBotMsg('err', '⚠️ Please paste a valid fbstate JSON.');
         return;
       }
-      // Validate JSON
       try { JSON.parse(fbstate); } catch (e) {
         showBotMsg('err', '⚠️ Invalid JSON format. Must be a valid fbstate array.');
         return;
@@ -1394,7 +1390,7 @@
           showBotMsg('ok', '✅ Bot created successfully!');
           document.getElementById('newBotName').value = '';
           document.getElementById('newBotFbstate').value = '';
-          loadBots(); // refresh list
+          loadBots();
         } else {
           showBotMsg('err', '❌ ' + (data.error || 'Unknown error'));
         }
@@ -1405,7 +1401,6 @@
       btn.innerHTML = '<i class="fi fi-rr-plus"></i> Create Bot';
     }
 
-    // Activate a bot
     async function activateBot(id) {
       if (!confirm('Activating this bot will switch the active session and restart the service. Continue?')) return;
       const msg = document.getElementById('botMsg');
@@ -1425,7 +1420,6 @@
       }
     }
 
-    // Delete a bot
     async function deleteBot(id) {
       if (!confirm('Delete this bot permanently? This cannot be undone.')) return;
       const msg = document.getElementById('botMsg');
@@ -1445,19 +1439,16 @@
       }
     }
 
-    // Helper to show messages in bot management section
     function showBotMsg(type, text) {
       const msg = document.getElementById('botMsg');
       msg.className = 'sc-msg ' + (type === 'ok' ? 'ok' : 'err');
       msg.textContent = text;
       msg.style.display = 'block';
-      // Auto hide after 5 seconds if success
       if (type === 'ok') {
         setTimeout(() => { msg.style.display = 'none'; }, 5000);
       }
     }
 
-    // Escape HTML to prevent XSS
     function escapeHtml(text) {
       if (!text) return '';
       const map = {
@@ -1472,7 +1463,6 @@
 
     // Load bots on page load
     loadBots();
-    // Refresh bot list every 30 seconds
     setInterval(loadBots, 30000);
   </script>
 </body>
