@@ -70,13 +70,15 @@ async function loginBot() {
 
         let fbstate = null;
 
-        // Get fbstate from environment (passed from parent)
+        // ===== FIX: Get fbstate from environment AND parse it correctly =====
         if (BOT_FBSTATE) {
             try {
+                // First, try to parse as JSON
                 fbstate = JSON.parse(BOT_FBSTATE);
-                console.log(`[BOT ${BOT_ID}] Loaded fbstate from environment`);
-            } catch (e) {
-                console.error(`[BOT ${BOT_ID}] Failed to parse fbstate:`, e);
+                console.log(`[BOT ${BOT_ID}] ✅ Loaded fbstate from environment`);
+            } catch (parseError) {
+                console.error(`[BOT ${BOT_ID}] ❌ Failed to parse fbstate JSON:`, parseError.message);
+                console.error(`[BOT ${BOT_ID}] 📝 Raw fbstate preview: ${BOT_FBSTATE.substring(0, 100)}...`);
                 process.exit(1);
             }
         } else {
@@ -84,22 +86,46 @@ async function loginBot() {
             console.log(`[BOT ${BOT_ID}] Loading fbstate from Firebase...`);
             const bot = await botModel.getById(BOT_ID);
             if (!bot) {
-                console.error(`[BOT ${BOT_ID}] Bot not found in Firebase`);
+                console.error(`[BOT ${BOT_ID}] ❌ Bot not found in Firebase`);
                 process.exit(1);
             }
             fbstate = bot.fbstate;
             if (typeof fbstate === 'string') {
-                try { fbstate = JSON.parse(fbstate); } catch (e) {
-                    console.error(`[BOT ${BOT_ID}] Invalid fbstate format`);
+                try {
+                    fbstate = JSON.parse(fbstate);
+                    console.log(`[BOT ${BOT_ID}] ✅ Parsed fbstate from Firebase`);
+                } catch (e) {
+                    console.error(`[BOT ${BOT_ID}] ❌ Invalid fbstate format in Firebase`);
                     process.exit(1);
                 }
             }
         }
 
-        if (!fbstate || !Array.isArray(fbstate)) {
-            console.error(`[BOT ${BOT_ID}] Invalid fbstate format`);
+        // ===== VALIDATE fbstate =====
+        if (!fbstate) {
+            console.error(`[BOT ${BOT_ID}] ❌ fbstate is null or undefined`);
             process.exit(1);
         }
+
+        if (!Array.isArray(fbstate)) {
+            console.error(`[BOT ${BOT_ID}] ❌ fbstate is not an array (type: ${typeof fbstate})`);
+            process.exit(1);
+        }
+
+        if (fbstate.length === 0) {
+            console.error(`[BOT ${BOT_ID}] ❌ fbstate array is empty`);
+            process.exit(1);
+        }
+
+        // Check if it has required keys
+        const hasRequiredKeys = fbstate.some(item => item.key === 'c_user' || item.key === 'xs');
+        if (!hasRequiredKeys) {
+            console.error(`[BOT ${BOT_ID}] ❌ fbstate missing required keys (c_user or xs)`);
+            console.error(`[BOT ${BOT_ID}] 📝 First few items: ${JSON.stringify(fbstate.slice(0, 3))}`);
+            process.exit(1);
+        }
+
+        console.log(`[BOT ${BOT_ID}] ✅ fbstate validated (${fbstate.length} items)`);
 
         console.log(`[BOT ${BOT_ID}] Logging in...`);
         const api = await login({
