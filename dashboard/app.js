@@ -33,7 +33,6 @@ const audioExt = ["3gp", "aa", "aac", "aax", "act", "aiff", "alac", "amr",
         "voc", "vox", "wav", "wma", "wv", "webm", "8svx", "cd"
 ];
 
-// Store running bot processes
 const activeBotProcesses = {};
 
 module.exports = async (api) => {
@@ -213,7 +212,6 @@ module.exports = async (api) => {
 
         // ===== BOT MANAGEMENT API =====
 
-        // GET bots
         app.get("/api/bots", async (req, res) => {
                 try {
                         const isSuper = req.session.isSuperAdmin === true;
@@ -230,7 +228,6 @@ module.exports = async (api) => {
                 }
         });
 
-        // CREATE bot (Admin ID required)
         app.post("/api/bots", async (req, res) => {
                 try {
                         const { fbstate, botName, ownerFbid } = req.body;
@@ -240,20 +237,14 @@ module.exports = async (api) => {
                         const isSuper = req.session.isSuperAdmin === true;
                         const sessionFbid = req.session.facebookUserID;
 
-                        // Security: non-super can only create bots with their own Admin ID
                         if (!isSuper && ownerFbid !== sessionFbid) {
-                                return res.status(403).json({
-                                        error: "You can only create bots with your own Admin ID. Ask Super Admin to authorize you."
-                                });
+                                return res.status(403).json({ error: "You can only create bots with your own Admin ID. Ask Super Admin to authorize you." });
                         }
 
-                        // Optional: verify the ownerFbid is in the trusted admin list
                         const adminConfig = await getAdminConfig();
                         const trustedIDs = adminConfig.trustedAdminIDs || [];
                         if (!isSuper && !trustedIDs.includes(ownerFbid)) {
-                                return res.status(403).json({
-                                        error: "This Admin ID is not authorized. Ask Super Admin to add you first."
-                                });
+                                return res.status(403).json({ error: "This Admin ID is not authorized. Ask Super Admin to add you first." });
                         }
 
                         const bot = await botModel.create({
@@ -268,7 +259,6 @@ module.exports = async (api) => {
                 }
         });
 
-        // DELETE bot
         app.delete("/api/bots/:id", async (req, res) => {
                 try {
                         const bot = await botModel.getById(req.params.id);
@@ -285,7 +275,6 @@ module.exports = async (api) => {
                 }
         });
 
-        // ACTIVATE bot (starts a separate process)
         app.post("/api/bots/:id/activate", async (req, res) => {
                 try {
                         const bot = await botModel.getById(req.params.id);
@@ -297,17 +286,14 @@ module.exports = async (api) => {
                                 return res.status(403).json({ error: "Permission denied" });
                         }
 
-                        // If this bot is already running, stop it first
                         if (activeBotProcesses[bot.id]) {
                                 activeBotProcesses[bot.id].kill();
                                 delete activeBotProcesses[bot.id];
                         }
 
-                        // Write fbstate to a unique file for this bot
                         const botAccountFile = path.join(process.cwd(), `account_${bot.id}.txt`);
                         fs.writeFileSync(botAccountFile, bot.fbstate);
 
-                        // Spawn a new bot process for this specific account
                         const botProcess = spawn('node', ['Goat.js', '--account', botAccountFile], {
                                 cwd: process.cwd(),
                                 stdio: 'inherit',
@@ -320,20 +306,16 @@ module.exports = async (api) => {
                         botProcess.on('close', (code) => {
                                 console.log(`[BOT ${bot.id}] Process exited with code ${code}`);
                                 delete activeBotProcesses[bot.id];
-                                // Mark as inactive in database if it crashes
                                 botModel.update(bot.id, { active: false }).catch(() => {});
                         });
 
-                        // Mark as active in database
                         await botModel.update(req.params.id, { active: true });
-
                         res.json({ success: true, message: `Bot "${bot.botName}" is now running!` });
                 } catch (err) {
                         res.status(500).json({ error: err.message });
                 }
         });
 
-        // STOP a running bot
         app.post("/api/bots/:id/stop", async (req, res) => {
                 try {
                         const bot = await botModel.getById(req.params.id);
@@ -377,17 +359,16 @@ module.exports = async (api) => {
                 }
         });
 
-        // ===== ORIGINAL ROUTES =====
-        // (Keep all your existing routes: /raw/*, /stats, /health, /profile, /logout, /changefbstate, /uptime, etc.)
-        // They are unchanged – just make sure they are present.
-        // For brevity, I'm not repeating them here, but they must remain in your file.
+        // ===== YOUR EXISTING ORIGINAL ROUTES =====
+        // You must keep all your original routes here (e.g., /raw/*, /stats, /health, /profile, /logout, /changefbstate, /uptime, etc.)
+        // They are unchanged and not reproduced here for brevity.
+        // Please merge them into this file.
 
         // ====== 404 catch-all ======
         app.get("*", (req, res) => {
                 res.status(404).json({ error: "Not found" });
         });
 
-        // error handler
         app.use((err, req, res, next) => {
                 if (err.message == "Login sessions require session support. Did you forget to use `express-session` middleware?")
                         return res.status(500).send(getText("app", "serverError"));
