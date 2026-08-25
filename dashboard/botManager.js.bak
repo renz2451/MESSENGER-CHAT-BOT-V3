@@ -24,28 +24,35 @@ async function startBotProcess(botId) {
       ...process.env,
       BOT_ACCOUNT_FILE: botFile,
       BOT_ID: botId,
-      BOT_OWNER: bot.ownerFbid
+      BOT_OWNER: bot.ownerFbid,
+      BOT_FBSTATE: bot.fbstate
     };
 
     const child = spawn('node', ['Goat.js'], {
       cwd: process.cwd(),
       env: env,
-      stdio: 'pipe',
+      stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
       detached: false
     });
 
-    // Log output
+    // Log output with bot ID prefix
     child.stdout.on('data', (data) => {
-      console.log(`[BOT ${botId}] ${data.toString()}`);
+      const lines = data.toString().split('\n').filter(line => line.trim());
+      for (const line of lines) {
+        console.log(`[BOT ${botId}] ${line}`);
+      }
     });
+
     child.stderr.on('data', (data) => {
-      console.error(`[BOT ${botId}] ${data.toString()}`);
+      const lines = data.toString().split('\n').filter(line => line.trim());
+      for (const line of lines) {
+        console.error(`[BOT ${botId}] ${line}`);
+      }
     });
 
     child.on('close', async (code) => {
       console.log(`[BOT ${botId}] Process exited with code ${code}`);
       botProcesses.delete(botId);
-      // Update Firebase to mark as not running
       await botModel.update(botId, { running: false, pid: null });
     });
 
@@ -68,7 +75,6 @@ async function stopBotProcess(botId) {
   try {
     const child = botProcesses.get(botId);
     if (!child) {
-      // Check if it's running but we lost track
       const bot = await botModel.getById(botId);
       if (bot && bot.running) {
         await botModel.update(botId, { running: false, pid: null });
@@ -77,7 +83,26 @@ async function stopBotProcess(botId) {
       throw new Error('Bot is not running');
     }
 
+    // Send SIGTERM first, then SIGKILL after 5 seconds if not exited
     child.kill('SIGTERM');
+    
+    // Wait for process to exit
+    const exitPromise = new Promise((resolve) => {
+      child.once('close', resolve);
+    });
+    
+    // Force kill after 5 seconds if not exited
+    const timeoutPromise = new Promise((resolve) => {
+      setTimeout(() => {
+        if (!child.killed) {
+          child.kill('SIGKILL');
+        }
+        resolve();
+      }, 5000);
+    });
+    
+    await Promise.race([exitPromise, timeoutPromise]);
+    
     botProcesses.delete(botId);
     await botModel.update(botId, { running: false, pid: null });
 
@@ -104,6 +129,7 @@ function getRunningBots() {
 async function restoreRunningBots() {
   try {
     const runningBots = await botModel.getRunning();
+    console.log(`[BOT MANAGER] Found ${runningBots.length} bots to restore`);
     for (const bot of runningBots) {
       console.log(`[BOT MANAGER] Restoring bot ${bot.id} (${bot.botName})`);
       await startBotProcess(bot.id);

@@ -429,34 +429,35 @@ module.exports = async (api) => {
                 }
         });
 
-        // ACTIVATE bot
-        app.post("/api/bots/:id/activate", async (req, res) => {
-                try {
-                        const bot = await botModel.getById(req.params.id);
-                        if (!bot) return res.status(404).json({ error: "Bot not found" });
-                        const isSuper = req.session.isSuperAdmin === true;
-                        const ownerFbid = req.session.facebookUserID;
-                        if (!isSuper && bot.ownerFbid !== ownerFbid) {
-                                return res.status(403).json({ error: "Permission denied" });
-                        }
+        // ACTIVATE bot (set as active)
+app.post("/api/bots/:id/activate", async (req, res) => {
+  try {
+    const bot = await botModel.getById(req.params.id);
+    if (!bot) return res.status(404).json({ error: "Bot not found" });
+    const isSuper = req.session.isSuperAdmin === true;
+    const ownerFbid = req.session.facebookUserID;
+    if (!isSuper && bot.ownerFbid !== ownerFbid) {
+      return res.status(403).json({ error: "Permission denied" });
+    }
 
-                        const allBots = await botModel.getAll();
-                        for (const b of allBots) {
-                                if (b.active) {
-                                        await botModel.update(b.id, { active: false });
-                                }
-                        }
-                        await botModel.update(req.params.id, { active: true });
+    const allBots = await botModel.getAll();
+    for (const b of allBots) {
+      if (b.active) {
+        await botModel.update(b.id, { active: false });
+      }
+    }
+    await botModel.update(req.params.id, { active: true });
 
-                        if (!bot.running) {
-                                await startBotProcess(req.params.id);
-                        }
+    // Start the bot if not running
+    if (!bot.running) {
+      await startBotProcess(req.params.id);
+    }
 
-                        res.json({ success: true, message: "Bot activated!" });
-                } catch (err) {
-                        res.status(500).json({ error: err.message });
-                }
-        });
+    res.json({ success: true, message: "Bot activated!" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
         // ===== PUBLIC SETUP-SESSION =====
         app.post("/api/setup-session", (req, res) => {
