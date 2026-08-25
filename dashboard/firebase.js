@@ -16,19 +16,19 @@ try {
       console.log('[FIREBASE] ✅ Initialized successfully.');
     }
   } else {
-    console.warn('[FIREBASE] ⚠️ FIREBASE_SERVICE_ACCOUNT env var not set. Bot management will not work.');
+    console.warn('[FIREBASE] ⚠️ FIREBASE_SERVICE_ACCOUNT env var not set.');
   }
 } catch (err) {
   console.error('[FIREBASE] ❌ Initialization error:', err.message);
 }
 
-// ---- User Model (for login/register) ----
+// ---- User Model ----
 const userModel = {
   create: async (fbid, password) => {
     if (!firebaseInitialized) throw new Error('Firebase not initialized.');
     const ref = db.ref('users').child(fbid);
     await ref.set({
-      password: password, // In production, hash this with bcrypt
+      password: password,
       createdAt: Date.now(),
       fbid: fbid
     });
@@ -48,7 +48,7 @@ const userModel = {
   }
 };
 
-// ---- Bot Model (for multi-bot management) ----
+// ---- Bot Model ----
 const botModel = {
   create: async (data) => {
     if (!firebaseInitialized) throw new Error('Firebase not initialized.');
@@ -57,7 +57,8 @@ const botModel = {
       ...data, 
       createdAt: Date.now(), 
       active: data.active || false,
-      running: false // New field: whether this bot is currently running
+      running: false,
+      pid: null // Process ID for the child process
     });
     return { id: ref.key, ...data };
   },
@@ -76,10 +77,10 @@ const botModel = {
     if (!bot) return null;
     return { id, ...bot };
   },
-  getActive: async () => {
-    if (!firebaseInitialized) return null;
+  getRunning: async () => {
+    if (!firebaseInitialized) return [];
     const allBots = await botModel.getAll();
-    return allBots.find(b => b.active === true) || null;
+    return allBots.filter(b => b.running === true);
   },
   update: async (id, data) => {
     if (!firebaseInitialized) throw new Error('Firebase not initialized.');

@@ -18,6 +18,7 @@ const server = http.createServer(app);
 const path = require("path");
 
 const { botModel, userModel, getAdminConfig, setAdminConfig } = require('./firebase.js');
+const { startBotProcess, stopBotProcess, getRunningBots, restoreRunningBots } = require('./botManager.js');
 
 const imageExt = ["png", "gif", "webp", "jpeg", "jpg"];
 const videoExt = ["webm", "mkv", "flv", "vob", "ogv", "ogg", "rrc", "gifv",
@@ -146,7 +147,6 @@ module.exports = async (api) => {
                                 return res.status(400).json({ error: "User already exists. Please sign in." });
                         }
 
-                        // In production, hash the password with bcrypt
                         await userModel.create(fbid, password);
                         res.json({ success: true, message: "Account created successfully" });
                 } catch (err) {
@@ -167,7 +167,6 @@ module.exports = async (api) => {
                                 return res.status(401).json({ error: "User not found. Please register." });
                         }
 
-                        // In production, compare hashed password
                         if (user.password !== password) {
                                 return res.status(401).json({ error: "Invalid password" });
                         }
@@ -191,7 +190,7 @@ module.exports = async (api) => {
                 }
         });
 
-        // Quick login (for already authenticated users)
+        // Quick login
         app.get("/api/auth/quick/:fbid", async (req, res) => {
                 try {
                         const fbid = req.params.fbid;
@@ -238,19 +237,17 @@ module.exports = async (api) => {
                 res.json({ success: true });
         });
 
-        // ===== DYNAMIC AUTH (Facebook ID bypass) =====
+        // ===== DYNAMIC AUTH =====
         app.get("/dashboard/auth/:fbid", async (req, res) => {
                 const fbid = req.params.fbid;
                 let config = await getAdminConfig();
                 let trustedIDs = config.trustedAdminIDs || [];
 
-                // Check if user exists in Firebase
                 const user = await userModel.get(fbid);
                 if (!user) {
                         return res.redirect("/login?error=User not found. Please register first.");
                 }
 
-                // First user -> Super Admin
                 if (trustedIDs.length === 0) {
                         await setAdminConfig({ 
                                 trustedAdminIDs: [fbid],
@@ -262,7 +259,6 @@ module.exports = async (api) => {
                         return res.redirect("/dashboard");
                 }
 
-                // Known admin
                 if (trustedIDs.includes(fbid)) {
                         const isSuper = trustedIDs[0] === fbid;
                         req.session.admin = true;
@@ -271,7 +267,6 @@ module.exports = async (api) => {
                         return res.redirect("/dashboard");
                 }
 
-                // New user -> limited access (only own bots)
                 req.session.admin = true;
                 req.session.facebookUserID = fbid;
                 req.session.isSuperAdmin = false;
@@ -322,9 +317,9 @@ module.exports = async (api) => {
                 res.json({ success: true });
         });
 
-        // ===== BOT MANAGEMENT API (Multi-Bot Support) =====
+        // ===== BOT MANAGEMENT API =====
 
-        // GET all bots for a user
+        // GET all bots
         app.get("/api/bots", async (req, res) => {
                 try {
                         const isSuper = req.session.isSuperAdmin === true;
@@ -335,7 +330,12 @@ module.exports = async (api) => {
                                 queryOwner = ownerFbid;
                         }
                         const bots = await botModel.getAll(queryOwner);
-                        res.json(bots);
+                        const running = getRunningBots();
+                        const botsWithStatus = bots.map(bot => {
+                                const isRunning = running.some(r => r.id === bot.id);
+                                return { ...bot, running: isRunning };
+                        });
+                        res.json(botsWithStatus);
                 } catch (err) {
                         res.status(500).json({ error: err.message });
                 }
@@ -362,7 +362,8 @@ module.exports = async (api) => {
                                 fbstate,
                                 botName: botName || "My Bot",
                                 active: false,
-                                running: false
+                                running: false,
+                                pid: null
                         });
                         res.status(201).json(bot);
                 } catch (err) {
@@ -380,6 +381,11 @@ module.exports = async (api) => {
                         if (!isSuper && bot.ownerFbid !== ownerFbid) {
                                 return res.status(403).json({ error: "Permission denied" });
                         }
+                        
+                        if (bot.running) {
+                                await stopBotProcess(req.params.id);
+                        }
+                        
                         await botModel.delete(req.params.id);
                         res.json({ success: true });
                 } catch (err) {
@@ -397,18 +403,9 @@ module.exports = async (api) => {
                         if (!isSuper && bot.ownerFbid !== ownerFbid) {
                                 return res.status(403).json({ error: "Permission denied" });
                         }
-
-                        // Mark as running
-                        await botModel.update(req.params.id, { running: true });
                         
-                        // Write fbstate to a unique file for this bot
-                        const botFile = process.cwd() + `/account_${bot.id}.txt`;
-                        fs.writeFileSync(botFile, bot.fbstate);
-                        
-                        // TODO: Start the bot process with its own fbstate
-                        // You'll need to create a child process that uses this specific fbstate
-                        
-                        res.json({ success: true, message: "Bot started!" });
+                        const result = await startBotProcess(req.params.id);
+                        res.json(result);
                 } catch (err) {
                         res.status(500).json({ error: err.message });
                 }
@@ -425,16 +422,14 @@ module.exports = async (api) => {
                                 return res.status(403).json({ error: "Permission denied" });
                         }
                         
-                        await botModel.update(req.params.id, { running: false });
-                        // TODO: Kill the child process if running
-                        
-                        res.json({ success: true, message: "Bot stopped." });
+                        const result = await stopBotProcess(req.params.id);
+                        res.json(result);
                 } catch (err) {
                         res.status(500).json({ error: err.message });
                 }
         });
 
-        // ACTIVATE bot (set as active)
+        // ACTIVATE bot
         app.post("/api/bots/:id/activate", async (req, res) => {
                 try {
                         const bot = await botModel.getById(req.params.id);
@@ -445,7 +440,6 @@ module.exports = async (api) => {
                                 return res.status(403).json({ error: "Permission denied" });
                         }
 
-                        // Deactivate all others
                         const allBots = await botModel.getAll();
                         for (const b of allBots) {
                                 if (b.active) {
@@ -454,14 +448,11 @@ module.exports = async (api) => {
                         }
                         await botModel.update(req.params.id, { active: true });
 
-                        // Write fbstate to account.txt for legacy compatibility
-                        const accountFile = process.cwd() + (process.env.NODE_ENV == "production" || process.env.NODE_ENV == "development" ? "/account.dev.txt" : "/account.txt");
-                        fs.writeFileSync(accountFile, bot.fbstate);
+                        if (!bot.running) {
+                                await startBotProcess(req.params.id);
+                        }
 
-                        res.json({ success: true, message: "Bot activated, restarting..." });
-                        res.on("finish", () => {
-                                setTimeout(() => process.exit(2), 500);
-                        });
+                        res.json({ success: true, message: "Bot activated!" });
                 } catch (err) {
                         res.status(500).json({ error: err.message });
                 }
@@ -487,10 +478,9 @@ module.exports = async (api) => {
         });
 
         // ================================================================
-        // ===== ORIGINAL ROUTES (preserved) =====
+        // ===== ORIGINAL ROUTES =====
         // ================================================================
 
-        // Define middleware (from original app.js)
         async function checkAuthConfigDashboardOfThread(threadData, userID) {
                 if (!isNaN(threadData))
                         threadData = await threadsData.get(threadData);
@@ -509,7 +499,6 @@ module.exports = async (api) => {
                 middlewareCheckAuthConfigDashboardOfThread
         } = middleWare;
 
-        // Raw file endpoints — admin only
         app.get("/raw/login", isAdmin, (req, res) => {
                 res.setHeader("Content-Type", "text/plain; charset=utf-8");
                 res.sendFile(path.join(__dirname, "../bot/login/login.js"));
@@ -528,7 +517,6 @@ module.exports = async (api) => {
                 res.sendFile(dbPath);
         });
 
-        // Health check
         app.get(["/health", "/ping", "/alive"], (req, res) => {
                 res.status(200).json({
                         status: "ok",
@@ -538,7 +526,6 @@ module.exports = async (api) => {
                 });
         });
 
-        // Stats API - JSON data
         app.get("/stats", async (req, res) => {
                 let fcaVersion;
                 try { fcaVersion = require("fca-r3nz75/package.json").version; }
@@ -584,19 +571,16 @@ module.exports = async (api) => {
                 });
         });
 
-        // Profile route
         app.get("/profile", isAuthenticated, async (req, res) => {
                 res.json({
                         userData: await usersData.get(req.user.facebookUserID) || {}
                 });
         });
 
-        // Donate route
         app.get("/donate", (req, res) => {
                 res.json({ message: "Donate endpoint" });
         });
 
-        // Logout
         app.get("/logout", (req, res, next) => {
                 req.logout(function (err) {
                         if (err)
@@ -605,7 +589,6 @@ module.exports = async (api) => {
                 });
         });
 
-        // Change fbstate
         app.post("/changefbstate", isAuthenticated, isVeryfiUserIDFacebook, (req, res) => {
                 if (!global.GoatBot.config.adminBot.includes(req.user.facebookUserID))
                         return res.send({
@@ -630,22 +613,18 @@ module.exports = async (api) => {
                 });
         });
 
-        // Uptime
         app.get("/uptime", global.responseUptimeCurrent);
 
-        // Change fbstate page
         app.get("/changefbstate", isAuthenticated, isVeryfiUserIDFacebook, isAdmin, (req, res) => {
                 res.json({
                         currentFbstate: fs.readFileSync(process.cwd() + (process.env.NODE_ENV == "production" || process.env.NODE_ENV == "development" ? "/account.dev.txt" : "/account.txt"), "utf8")
                 });
         });
 
-        // ====== 404 catch-all ======
         app.get("*", (req, res) => {
                 res.status(404).json({ error: "Not found" });
         });
 
-        // error handler
         app.use((err, req, res, next) => {
                 if (err.message == "Login sessions require session support. Did you forget to use `express-session` middleware?")
                         return res.status(500).send(getText("app", "serverError"));
@@ -674,6 +653,10 @@ module.exports = async (api) => {
                 dashBoardUrl = `http://localhost:${PORT}`;
         }
         dashBoardUrl = dashBoardUrl.replace(/\/$/, "");
+        
+        // Restore running bots on startup
+        await restoreRunningBots();
+        
         await server.listen(PORT, "0.0.0.0");
         utils.log.info("DASHBOARD", `Dashboard is running: ${dashBoardUrl}`);
         if (config.serverUptime.socket.enable == true)

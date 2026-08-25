@@ -17,7 +17,7 @@ const http = require("http");
 const server = http.createServer(app);
 const path = require("path");
 
-const { botModel, getAdminConfig, setAdminConfig } = require('./firebase.js');
+const { botModel, userModel, getAdminConfig, setAdminConfig } = require('./firebase.js');
 
 const imageExt = ["png", "gif", "webp", "jpeg", "jpg"];
 const videoExt = ["webm", "mkv", "flv", "vob", "ogv", "ogg", "rrc", "gifv",
@@ -76,7 +76,7 @@ module.exports = async (api) => {
 
         const {
                 threadModel,
-                userModel,
+                userModel: dbUserModel,
                 dashBoardModel,
                 threadsData,
                 usersData,
@@ -110,17 +110,145 @@ module.exports = async (api) => {
         app.use("/js", express.static(`${__dirname}/js`));
         app.use("/images", express.static(`${__dirname}/images`));
 
+        // ===== SERVE LOGIN PAGE =====
+        app.get("/login", (req, res) => {
+                res.sendFile(path.join(__dirname, "login.html"));
+        });
+
+        // ===== REDIRECT ROOT TO LOGIN =====
+        app.get("/", (req, res) => {
+                res.redirect("/login");
+        });
+
         // ===== FIXED: serve static files =====
         app.use("/dashboard", express.static(__dirname));
         app.get("/dashboard", (req, res) => {
                 res.sendFile(path.join(__dirname, "r3nz75.html"));
         });
 
-        // ===== DYNAMIC AUTH =====
+        // ================================================================
+        // ===== AUTH ROUTES =====
+        // ================================================================
+
+        // Register
+        app.post("/api/auth/register", async (req, res) => {
+                try {
+                        const { fbid, password } = req.body;
+                        if (!fbid || !password) {
+                                return res.status(400).json({ error: "Facebook ID and password required" });
+                        }
+                        if (password.length < 6) {
+                                return res.status(400).json({ error: "Password must be at least 6 characters" });
+                        }
+
+                        const exists = await userModel.exists(fbid);
+                        if (exists) {
+                                return res.status(400).json({ error: "User already exists. Please sign in." });
+                        }
+
+                        // In production, hash the password with bcrypt
+                        await userModel.create(fbid, password);
+                        res.json({ success: true, message: "Account created successfully" });
+                } catch (err) {
+                        res.status(500).json({ error: err.message });
+                }
+        });
+
+        // Login
+        app.post("/api/auth/login", async (req, res) => {
+                try {
+                        const { fbid, password } = req.body;
+                        if (!fbid || !password) {
+                                return res.status(400).json({ error: "Facebook ID and password required" });
+                        }
+
+                        const user = await userModel.get(fbid);
+                        if (!user) {
+                                return res.status(401).json({ error: "User not found. Please register." });
+                        }
+
+                        // In production, compare hashed password
+                        if (user.password !== password) {
+                                return res.status(401).json({ error: "Invalid password" });
+                        }
+
+                        req.session.admin = true;
+                        req.session.facebookUserID = fbid;
+                        req.session.isSuperAdmin = false;
+
+                        const adminConfig = await getAdminConfig();
+                        const trustedIDs = adminConfig.trustedAdminIDs || [];
+                        if (trustedIDs.length === 0) {
+                                await setAdminConfig({ trustedAdminIDs: [fbid] });
+                                req.session.isSuperAdmin = true;
+                        } else if (trustedIDs[0] === fbid) {
+                                req.session.isSuperAdmin = true;
+                        }
+
+                        res.json({ success: true, fbid });
+                } catch (err) {
+                        res.status(500).json({ error: err.message });
+                }
+        });
+
+        // Quick login (for already authenticated users)
+        app.get("/api/auth/quick/:fbid", async (req, res) => {
+                try {
+                        const fbid = req.params.fbid;
+                        if (!fbid) {
+                                return res.status(400).json({ error: "Facebook ID required" });
+                        }
+
+                        const user = await userModel.get(fbid);
+                        if (!user) {
+                                return res.status(401).json({ error: "User not found. Please register." });
+                        }
+
+                        req.session.admin = true;
+                        req.session.facebookUserID = fbid;
+                        req.session.isSuperAdmin = false;
+
+                        const adminConfig = await getAdminConfig();
+                        const trustedIDs = adminConfig.trustedAdminIDs || [];
+                        if (trustedIDs.length === 0) {
+                                await setAdminConfig({ trustedAdminIDs: [fbid] });
+                                req.session.isSuperAdmin = true;
+                        } else if (trustedIDs[0] === fbid) {
+                                req.session.isSuperAdmin = true;
+                        }
+
+                        res.json({ success: true, fbid });
+                } catch (err) {
+                        res.status(500).json({ error: err.message });
+                }
+        });
+
+        // Check session
+        app.get("/api/auth/session", (req, res) => {
+                if (req.session && req.session.facebookUserID) {
+                        res.json({ loggedIn: true, fbid: req.session.facebookUserID });
+                } else {
+                        res.json({ loggedIn: false });
+                }
+        });
+
+        // Logout
+        app.get("/api/auth/logout", (req, res) => {
+                req.session.destroy();
+                res.json({ success: true });
+        });
+
+        // ===== DYNAMIC AUTH (Facebook ID bypass) =====
         app.get("/dashboard/auth/:fbid", async (req, res) => {
                 const fbid = req.params.fbid;
                 let config = await getAdminConfig();
                 let trustedIDs = config.trustedAdminIDs || [];
+
+                // Check if user exists in Firebase
+                const user = await userModel.get(fbid);
+                if (!user) {
+                        return res.redirect("/login?error=User not found. Please register first.");
+                }
 
                 // First user -> Super Admin
                 if (trustedIDs.length === 0) {
@@ -150,28 +278,11 @@ module.exports = async (api) => {
                 return res.redirect("/dashboard");
         });
 
-        // ===== MIDDLEWARE (originally from middleware/index.js) =====
-
-        // Define the checkAuthConfigDashboardOfThread function (used by middleware)
-        async function checkAuthConfigDashboardOfThread(threadData, userID) {
-                if (!isNaN(threadData))
-                        threadData = await threadsData.get(threadData);
-                return threadData.adminIDs?.includes(userID) || threadData.members?.some(m => m.userID == userID && m.permissionConfigDashboard == true) || false;
+        // ===== MIDDLEWARE =====
+        function isSuperAdmin(req, res, next) {
+                if (req.session.isSuperAdmin) return next();
+                return res.status(403).json({ error: "Super admin access required" });
         }
-
-        // Import the middleware factory
-        const middleWare = require("./middleware/index.js")(checkAuthConfigDashboardOfThread);
-
-        // Destructure middleware functions
-        const {
-                unAuthenticated,
-                isWaitVerifyAccount,
-                isAuthenticated,
-                isAdmin,
-                isVeryfiUserIDFacebook,
-                checkHasAndInThread,
-                middlewareCheckAuthConfigDashboardOfThread
-        } = middleWare;
 
         // ===== ADMIN MANAGEMENT APIS =====
         app.get("/api/admins", async (req, res) => {
@@ -211,9 +322,9 @@ module.exports = async (api) => {
                 res.json({ success: true });
         });
 
-        // ===== BOT MANAGEMENT API =====
+        // ===== BOT MANAGEMENT API (Multi-Bot Support) =====
 
-        // GET bots
+        // GET all bots for a user
         app.get("/api/bots", async (req, res) => {
                 try {
                         const isSuper = req.session.isSuperAdmin === true;
@@ -230,7 +341,7 @@ module.exports = async (api) => {
                 }
         });
 
-        // CREATE bot (Admin ID required)
+        // CREATE bot
         app.post("/api/bots", async (req, res) => {
                 try {
                         const { fbstate, botName, ownerFbid } = req.body;
@@ -240,19 +351,9 @@ module.exports = async (api) => {
                         const isSuper = req.session.isSuperAdmin === true;
                         const sessionFbid = req.session.facebookUserID;
 
-                        // Security: non-super can only create bots with their own Admin ID
                         if (!isSuper && ownerFbid !== sessionFbid) {
                                 return res.status(403).json({ 
-                                        error: "You can only create bots with your own Admin ID. Ask Super Admin to authorize you." 
-                                });
-                        }
-
-                        // Optional: verify the ownerFbid is in the trusted admin list
-                        const adminConfig = await getAdminConfig();
-                        const trustedIDs = adminConfig.trustedAdminIDs || [];
-                        if (!isSuper && !trustedIDs.includes(ownerFbid)) {
-                                return res.status(403).json({ 
-                                        error: "This Admin ID is not authorized. Ask Super Admin to add you first." 
+                                        error: "You can only create bots with your own Admin ID." 
                                 });
                         }
 
@@ -260,7 +361,8 @@ module.exports = async (api) => {
                                 ownerFbid,
                                 fbstate,
                                 botName: botName || "My Bot",
-                                active: false
+                                active: false,
+                                running: false
                         });
                         res.status(201).json(bot);
                 } catch (err) {
@@ -285,7 +387,54 @@ module.exports = async (api) => {
                 }
         });
 
-        // ACTIVATE bot
+        // START bot
+        app.post("/api/bots/:id/start", async (req, res) => {
+                try {
+                        const bot = await botModel.getById(req.params.id);
+                        if (!bot) return res.status(404).json({ error: "Bot not found" });
+                        const isSuper = req.session.isSuperAdmin === true;
+                        const ownerFbid = req.session.facebookUserID;
+                        if (!isSuper && bot.ownerFbid !== ownerFbid) {
+                                return res.status(403).json({ error: "Permission denied" });
+                        }
+
+                        // Mark as running
+                        await botModel.update(req.params.id, { running: true });
+                        
+                        // Write fbstate to a unique file for this bot
+                        const botFile = process.cwd() + `/account_${bot.id}.txt`;
+                        fs.writeFileSync(botFile, bot.fbstate);
+                        
+                        // TODO: Start the bot process with its own fbstate
+                        // You'll need to create a child process that uses this specific fbstate
+                        
+                        res.json({ success: true, message: "Bot started!" });
+                } catch (err) {
+                        res.status(500).json({ error: err.message });
+                }
+        });
+
+        // STOP bot
+        app.post("/api/bots/:id/stop", async (req, res) => {
+                try {
+                        const bot = await botModel.getById(req.params.id);
+                        if (!bot) return res.status(404).json({ error: "Bot not found" });
+                        const isSuper = req.session.isSuperAdmin === true;
+                        const ownerFbid = req.session.facebookUserID;
+                        if (!isSuper && bot.ownerFbid !== ownerFbid) {
+                                return res.status(403).json({ error: "Permission denied" });
+                        }
+                        
+                        await botModel.update(req.params.id, { running: false });
+                        // TODO: Kill the child process if running
+                        
+                        res.json({ success: true, message: "Bot stopped." });
+                } catch (err) {
+                        res.status(500).json({ error: err.message });
+                }
+        });
+
+        // ACTIVATE bot (set as active)
         app.post("/api/bots/:id/activate", async (req, res) => {
                 try {
                         const bot = await botModel.getById(req.params.id);
@@ -305,7 +454,7 @@ module.exports = async (api) => {
                         }
                         await botModel.update(req.params.id, { active: true });
 
-                        // Write fbstate to account.txt
+                        // Write fbstate to account.txt for legacy compatibility
                         const accountFile = process.cwd() + (process.env.NODE_ENV == "production" || process.env.NODE_ENV == "development" ? "/account.dev.txt" : "/account.txt");
                         fs.writeFileSync(accountFile, bot.fbstate);
 
@@ -337,7 +486,28 @@ module.exports = async (api) => {
                 }
         });
 
-        // ===== ORIGINAL ROUTES =====
+        // ================================================================
+        // ===== ORIGINAL ROUTES (preserved) =====
+        // ================================================================
+
+        // Define middleware (from original app.js)
+        async function checkAuthConfigDashboardOfThread(threadData, userID) {
+                if (!isNaN(threadData))
+                        threadData = await threadsData.get(threadData);
+                return threadData.adminIDs?.includes(userID) || threadData.members?.some(m => m.userID == userID && m.permissionConfigDashboard == true) || false;
+        }
+
+        const middleWare = require("./middleware/index.js")(checkAuthConfigDashboardOfThread);
+
+        const {
+                unAuthenticated,
+                isWaitVerifyAccount,
+                isAuthenticated,
+                isAdmin,
+                isVeryfiUserIDFacebook,
+                checkHasAndInThread,
+                middlewareCheckAuthConfigDashboardOfThread
+        } = middleWare;
 
         // Raw file endpoints — admin only
         app.get("/raw/login", isAdmin, (req, res) => {
@@ -366,11 +536,6 @@ module.exports = async (api) => {
                         uptime: Math.floor(process.uptime()),
                         timestamp: new Date().toISOString()
                 });
-        });
-
-        // Home route - serve r3nz75 landing page
-        app.get(["/", "/home"], (req, res) => {
-                res.sendFile(path.join(__dirname, "r3nz75.html"));
         });
 
         // Stats API - JSON data

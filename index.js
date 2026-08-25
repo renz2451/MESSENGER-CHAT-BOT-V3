@@ -1,26 +1,28 @@
 /**
- * @author NTKhang
- * ! The source code is written by NTKhang, please don't change the author's name everywhere. Thank you for using
- * ! Official source code: https://github.com/ntkhang03/Goat-Bot-V2
- * ! If you do not download the source code from the above address, you are using an unknown version and at risk of having your account hacked
+ * RENZ MESSENGER BOT V3
+ * Entry point for Render deployment
  */
 
 const { spawn } = require("child_process");
 const log = require("./logger/log.js");
 
 function startProject() {
-	const child = spawn("node", ["Goat.js"], {
-		cwd: __dirname,
-		stdio: "inherit",
-		shell: true
-	});
+  const child = spawn("node", ["Goat.js"], {
+    cwd: __dirname,
+    stdio: "inherit",
+    shell: true
+  });
 
-	child.on("close", (code) => {
-		if (code == 2) {
-			log.info("Restarting Project...");
-			startProject();
-		}
-	});
+  child.on("close", (code) => {
+    if (code == 2) {
+      log.info("Restarting Project...");
+      startProject();
+    } else if (code != 0) {
+      log.error(`Project exited with code ${code}`);
+      // Don't restart immediately to avoid crash loops
+      setTimeout(() => startProject(), 5000);
+    }
+  });
 }
 
 startProject();

@@ -1,265 +1,276 @@
 /**
- * @author NTKhang
- * ! The source code is written by NTKhang, please don't change the author's name everywhere. Thank you for using
- * ! Official source code: https://github.com/ntkhang03/Goat-Bot-V2
- * ! If you do not download the source code from the above address, you are using an unknown version and at risk of having your account hacked
+ * @author R3nz75
+ * RENZ MESSENGER BOT V3
+ * Official source code: https://github.com/renz2451/MESSENGER-CHAT-BOT-V3
  */
 
-process.on('unhandledRejection', error => console.log(error));
-process.on('uncaughtException', error => console.log(error));
-
-const axios = require("axios");
 const fs = require("fs-extra");
-const google = require("googleapis").google;
-const nodemailer = require("nodemailer");
-const { execSync } = require('child_process');
-const log = require('./logger/log.js');
 const path = require("path");
+const { spawn } = require("child_process");
+const { promisify } = require("util");
+const readdir = promisify(fs.readdir);
+const readFile = promisify(fs.readFile);
+const stat = promisify(fs.stat);
 
-process.env.BLUEBIRD_W_FORGOTTEN_RETURN = 0; 
+// ===== DETERMINE WHICH ACCOUNT FILE TO USE =====
+// If running as a child process for a specific bot, use that bot's file
+let accountFile = process.env.BOT_ACCOUNT_FILE || "account.txt";
 
-function validJSON(pathDir) {
-	try {
-		if (!fs.existsSync(pathDir))
-			throw new Error(`File "${pathDir}" not found`);
-		execSync(`npx jsonlint "${pathDir}"`, { stdio: 'pipe' });
-		return true;
-	}
-	catch (err) {
-		let msgError = err.message;
-		msgError = msgError.split("\n").slice(1).join("\n");
-		const indexPos = msgError.indexOf("    at");
-		msgError = msgError.slice(0, indexPos != -1 ? indexPos - 1 : msgError.length);
-		throw new Error(msgError);
-	}
+// If using a specific bot ID, also set the file path
+if (process.env.BOT_ID) {
+  const botId = process.env.BOT_ID;
+  const customFile = `account_${botId}.txt`;
+  // Check if the file exists, if not create it from the parent's fbstate
+  if (!fs.existsSync(path.join(process.cwd(), customFile))) {
+    // If we have the fbstate in environment, write it
+    if (process.env.BOT_FBSTATE) {
+      fs.writeFileSync(path.join(process.cwd(), customFile), process.env.BOT_FBSTATE);
+    }
+  }
+  accountFile = customFile;
 }
 
-// Fixed to always use standard file names regardless of NODE_ENV
-const dirConfig = path.normalize(`${__dirname}/config.json`);
-const dirConfigCommands = path.normalize(`${__dirname}/configCommands.json`);
-const dirAccount = path.normalize(`${__dirname}/account.txt`);
+console.log(`[BOT] Using account file: ${accountFile}`);
 
-for (const pathDir of [dirConfig, dirConfigCommands]) {
-	try {
-		validJSON(pathDir);
-	}
-	catch (err) {
-		log.error("CONFIG", `Invalid JSON file "${pathDir.replace(__dirname, "")}":\n${err.message.split("\n").map(line => `  ${line}`).join("\n")}\nPlease fix it and restart bot`);
-		process.exit(0);
-	}
-}
+// ===== LOAD CONFIG =====
+const configPath = path.join(__dirname, process.env.NODE_ENV === 'development' ? 'config.dev.json' : 'config.json');
+const config = require(configPath);
 
-const config = require(dirConfig);
-if (config.whiteListMode?.whiteListIds && Array.isArray(config.whiteListMode.whiteListIds))
-	config.whiteListMode.whiteListIds = config.whiteListMode.whiteListIds.map(id => id.toString());
-const configCommands = require(dirConfigCommands);
-
+// ===== SETUP GLOBAL =====
 global.GoatBot = {
-	startTime: Date.now() - process.uptime() * 1000, 
-	commands: new Map(), 
-	eventCommands: new Map(), 
-	commandFilesPath: [], 
-	eventCommandsFilesPath: [], 
-	aliases: new Map(), 
-	onFirstChat: [], 
-	onChat: [], 
-	onEvent: [], 
-	onReply: new Map(), 
-	onReaction: new Map(), 
-	onAnyEvent: [], 
-	config, 
-	configCommands, 
-	envCommands: {}, 
-	envEvents: {}, 
-	envGlobal: {}, 
-	reLoginBot: function () { }, 
-	Listening: null, 
-	oldListening: [], 
-	callbackListenTime: {}, 
-	storage5Message: [], 
-	fcaApi: null, 
-	botID: null 
+  config: config,
+  configCommands: require(path.join(__dirname, process.env.NODE_ENV === 'development' ? 'configCommands.dev.json' : 'configCommands.json')),
+  commands: new Map(),
+  eventCommands: new Map(),
+  aliases: new Map(),
+  fcaApi: null,
+  botID: null,
+  botName: config.nameBot || "RENZ BOT",
+  prefix: config.prefix || "$",
+  language: config.language || "en",
+  startTime: Date.now()
 };
 
-global.db = {
-	allThreadData: [],
-	allUserData: [],
-	allDashBoardData: [],
-	allGlobalData: [],
-	threadModel: null,
-	userModel: null,
-	dashboardModel: null,
-	globalModel: null,
-	threadsData: null,
-	usersData: null,
-	dashBoardData: null,
-	globalData: null,
-	receivedTheFirstMessage: {}
-};
-
-global.client = {
-	dirConfig,
-	dirConfigCommands,
-	dirAccount,
-	countDown: {},
-	cache: {},
-	database: {
-		creatingThreadData: [],
-		creatingUserData: [],
-		creatingDashBoardData: [],
-		creatingGlobalData: []
-	},
-	commandBanned: configCommands.commandBanned
-};
-
+// ===== LOAD UTILITIES =====
 const utils = require("./utils.js");
 global.utils = utils;
-const { colors } = utils;
+global.log = utils.log;
 
-global.temp = {
-	createThreadData: [],
-	createUserData: [],
-	createThreadDataError: [], 
-	filesOfGoogleDrive: {
-		arraybuffer: {},
-		stream: {},
-		fileNames: {}
-	},
-	contentScripts: {
-		cmds: {},
-		events: {}
-	}
-};
+// ===== SETUP DATABASE =====
+const db = require("./database/controller/index.js");
 
-const watchAndReloadConfig = (dir, type, prop, logName) => {
-	let lastModified = fs.statSync(dir).mtimeMs;
-	let isFirstModified = true;
+// ===== LOGIN FUNCTION =====
+async function loginBot() {
+  try {
+    const { login } = require("fcanew-r3nz75");
+    
+    // Read fbstate from the determined account file
+    const fbstatePath = path.join(__dirname, accountFile);
+    let fbstate = [];
+    
+    if (fs.existsSync(fbstatePath)) {
+      try {
+        const content = fs.readFileSync(fbstatePath, 'utf8');
+        fbstate = JSON.parse(content);
+        if (!Array.isArray(fbstate)) {
+          throw new Error('Invalid fbstate format');
+        }
+        console.log(`[BOT] Loaded fbstate from ${accountFile}`);
+      } catch (err) {
+        console.error(`[BOT] Failed to load fbstate: ${err.message}`);
+        // Try to load from config as fallback
+        if (config.facebookAccount && config.facebookAccount.fbstate) {
+          fbstate = config.facebookAccount.fbstate;
+        }
+      }
+    } else if (config.facebookAccount && config.facebookAccount.fbstate) {
+      fbstate = config.facebookAccount.fbstate;
+      console.log('[BOT] Using fbstate from config.json');
+    } else {
+      console.error('[BOT] No fbstate found! Please provide a valid session.');
+      process.exit(1);
+    }
 
-	fs.watch(dir, (eventType) => {
-		if (eventType === type) {
-			const oldConfig = global.GoatBot[prop];
-			setTimeout(() => {
-				try {
-					if (isFirstModified) {
-						isFirstModified = false;
-						return;
-					}
-					if (lastModified === fs.statSync(dir).mtimeMs) {
-						return;
-					}
-					global.GoatBot[prop] = JSON.parse(fs.readFileSync(dir, 'utf-8'));
-					log.success(logName, `Reloaded ${dir.replace(process.cwd(), "")}`);
-				}
-				catch (err) {
-					log.warn(logName, `Can't reload ${dir.replace(process.cwd(), "")}`);
-					global.GoatBot[prop] = oldConfig;
-				}
-				finally {
-					lastModified = fs.statSync(dir).mtimeMs;
-				}
-			}, 200);
-		}
-	});
-};
+    // Login with fbstate
+    const api = await login({ 
+      appState: fbstate,
+      logLevel: 'error',
+      forceLogin: true,
+      listenEvents: true,
+      updatePresence: true,
+      listenTyping: true,
+      autoMarkDelivery: true,
+      autoReconnect: true
+    });
 
-watchAndReloadConfig(dirConfigCommands, 'change', 'configCommands', 'CONFIG COMMANDS');
-watchAndReloadConfig(dirConfig, 'change', 'config', 'CONFIG');
+    global.GoatBot.fcaApi = api;
 
-global.GoatBot.envGlobal = global.GoatBot.configCommands.envGlobal;
-global.GoatBot.envCommands = global.GoatBot.configCommands.envCommands;
-global.GoatBot.envEvents = global.GoatBot.configCommands.envEvents;
+    // Get bot info
+    const botInfo = await api.getCurrentUser();
+    global.GoatBot.botID = botInfo.id;
+    global.GoatBot.botName = botInfo.name || config.nameBot || "RENZ BOT";
 
-const getText = global.utils.getText;
+    console.log(`[BOT] Logged in as: ${botInfo.name} (${botInfo.id})`);
 
-if (config.autoRestart) {
-	const time = config.autoRestart.time;
-	if (!isNaN(time) && time > 0) {
-		utils.log.info("AUTO RESTART", getText("Goat", "autoRestart1", utils.convertTime(time, true)));
-		setTimeout(() => {
-			utils.log.info("AUTO RESTART", "Restarting...");
-			process.exit(2);
-		}, time);
-	}
-	else if (typeof time == "string" && time.match(/^((((\d+,)+\d+|(\d+(\/|-|#)\d+)|\d+L?|\*(\/\d+)?|L(-\d+)?|\?|[A-Z]{3}(-[A-Z]{3})?) ?){5,7})$/gmi)) {
-		utils.log.info("AUTO RESTART", getText("Goat", "autoRestart2", time));
-		const cron = require("node-cron");
-		cron.schedule(time, () => {
-			utils.log.info("AUTO RESTART", "Restarting...");
-			process.exit(2);
-		});
-	}
+    // ===== LOAD COMMANDS =====
+    await loadCommands(api);
+
+    // ===== START LISTENING =====
+    await startListening(api);
+
+  } catch (err) {
+    console.error('[BOT] Login failed:', err.message);
+    setTimeout(() => {
+      console.log('[BOT] Retrying login...');
+      loginBot();
+    }, 5000);
+  }
 }
 
-(async () => {
-	const { gmailAccount } = config.credentials;
-	const { email, clientId, clientSecret, refreshToken } = gmailAccount;
-	const OAuth2 = google.auth.OAuth2;
-	const OAuth2_client = new OAuth2(clientId, clientSecret);
-	OAuth2_client.setCredentials({ refresh_token: refreshToken });
-	let accessToken;
-	try {
-		accessToken = await OAuth2_client.getAccessToken();
-	}
-	catch (err) {
-		throw new Error(getText("Goat", "googleApiTokenExpired"));
-	}
-	
-	const transporter = nodemailer.createTransport({
-		host: 'smtp.gmail.com',
-		service: 'Gmail',
-		auth: {
-			type: 'OAuth2',
-			user: email,
-			clientId,
-			clientSecret,
-			refreshToken,
-			accessToken
-		}
-	});
+// ===== LOAD COMMANDS =====
+async function loadCommands(api) {
+  const commandsPath = path.join(__dirname, 'commands');
+  const commandFolders = await readdir(commandsPath);
 
-	async function sendMail({ to, subject, text, html, attachments }) {
-		const mailOptions = {
-			from: email,
-			to,
-			subject,
-			text,
-			html,
-			attachments
-		};
-		const info = await transporter.sendMail(mailOptions);
-		return info;
-	}
+  for (const folder of commandFolders) {
+    const folderPath = path.join(commandsPath, folder);
+    const statInfo = await stat(folderPath);
+    
+    if (!statInfo.isDirectory()) continue;
 
-	global.utils.sendMail = sendMail;
-	global.utils.transporter = transporter;
+    const commandFiles = await readdir(folderPath);
+    for (const file of commandFiles) {
+      if (!file.endsWith('.js')) continue;
 
-	const { data: { version } } = await axios.get("https://raw.githubusercontent.com/ntkhang03/Goat-Bot-V2/main/package.json");
-	const currentVersion = require("./package.json").version;
-	if (compareVersion(version, currentVersion) === 1)
-		utils.log.master("NEW VERSION", getText(
-			"Goat",
-			"newVersionDetected",
-			colors.gray(currentVersion),
-			colors.hex("#eb6a07", version),
-			colors.hex("#eb6a07", "node update")
-		));
+      try {
+        const command = require(path.join(folderPath, file));
+        if (command.config && command.config.name) {
+          global.GoatBot.commands.set(command.config.name, command);
+          
+          if (command.config.aliases) {
+            for (const alias of command.config.aliases) {
+              global.GoatBot.aliases.set(alias, command.config.name);
+            }
+          }
+          console.log(`[BOT] Loaded command: ${command.config.name}`);
+        }
+      } catch (err) {
+        console.error(`[BOT] Failed to load command ${file}:`, err.message);
+      }
+    }
+  }
 
-	const parentIdGoogleDrive = await utils.drive.checkAndCreateParentFolder("GoatBot");
-	utils.drive.parentID = parentIdGoogleDrive;
+  console.log(`[BOT] Loaded ${global.GoatBot.commands.size} commands`);
+}
 
-	// Always require the standard login.js
-	require(`./bot/login/login.js`);
-})();
+// ===== START LISTENING =====
+async function startListening(api) {
+  // Load event handlers
+  const eventsPath = path.join(__dirname, 'events');
+  if (fs.existsSync(eventsPath)) {
+    const eventFiles = await readdir(eventsPath);
+    for (const file of eventFiles) {
+      if (!file.endsWith('.js')) continue;
+      try {
+        const event = require(path.join(eventsPath, file));
+        if (event.config && event.config.name) {
+          global.GoatBot.eventCommands.set(event.config.name, event);
+          console.log(`[BOT] Loaded event: ${event.config.name}`);
+        }
+      } catch (err) {
+        console.error(`[BOT] Failed to load event ${file}:`, err.message);
+      }
+    }
+  }
 
-function compareVersion(version1, version2) {
-	const v1 = version1.split(".");
-	const v2 = version2.split(".");
-	for (let i = 0; i < 3; i++) {
-		if (parseInt(v1[i]) > parseInt(v2[i]))
-			return 1; 
-		if (parseInt(v1[i]) < parseInt(v2[i]))
-			return -1; 
-	}
-	return 0; 
-	}
-			
+  // Start listening to messages
+  api.listenMqtt(async (err, event) => {
+    if (err) {
+      console.error('[BOT] MQTT Error:', err.message);
+      return;
+    }
+
+    // Handle events
+    await handleEvent(api, event);
+  });
+
+  console.log('[BOT] Listening for messages...');
+}
+
+// ===== HANDLE EVENTS =====
+async function handleEvent(api, event) {
+  try {
+    // Process event commands first
+    for (const [name, eventCmd] of global.GoatBot.eventCommands) {
+      try {
+        if (eventCmd.onEvent) {
+          await eventCmd.onEvent({ api, event, ...eventCmd.config });
+        }
+      } catch (err) {
+        console.error(`[BOT] Event command ${name} error:`, err.message);
+      }
+    }
+
+    // Handle message commands
+    if (event.type === 'message' && event.body) {
+      const prefix = global.GoatBot.prefix;
+      if (!event.body.startsWith(prefix)) return;
+
+      const args = event.body.slice(prefix.length).trim().split(/\s+/);
+      const commandName = args.shift().toLowerCase();
+
+      const command = global.GoatBot.commands.get(commandName) || 
+                      global.GoatBot.commands.get(global.GoatBot.aliases.get(commandName));
+
+      if (command) {
+        try {
+          // Create context object for the command
+          const context = {
+            api,
+            event,
+            message: {
+              reply: async (text) => {
+                return api.sendMessage(text, event.threadID);
+              },
+              react: async (emoji) => {
+                return api.setMessageReaction(emoji, event.messageID, event.threadID);
+              }
+            },
+            usersData: require('./database/models/users.js'),
+            threadsData: require('./database/models/threads.js'),
+            args,
+            commandName
+          };
+
+          await command.onStart(context);
+        } catch (err) {
+          console.error(`[BOT] Command ${commandName} error:`, err.message);
+          api.sendMessage(`⚠️ Error: ${err.message}`, event.threadID);
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[BOT] Event handler error:', err.message);
+  }
+}
+
+// ===== START BOT =====
+console.log('[BOT] Starting RENZ MESSENGER BOT V3...');
+console.log(`[BOT] Using Node.js ${process.version}`);
+
+// Handle process signals
+process.on('SIGTERM', () => {
+  console.log('[BOT] Received SIGTERM, shutting down...');
+  process.exit(0);
+});
+
+process.on('SIGINT', () => {
+  console.log('[BOT] Received SIGINT, shutting down...');
+  process.exit(0);
+});
+
+// Start the bot
+loginBot().catch(err => {
+  console.error('[BOT] Fatal error:', err);
+  process.exit(1);
+});
