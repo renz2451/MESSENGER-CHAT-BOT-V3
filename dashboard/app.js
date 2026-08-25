@@ -125,7 +125,6 @@ module.exports = async (api) => {
                 let config = await getAdminConfig();
                 let trustedIDs = config.trustedAdminIDs || [];
 
-                // First user -> Super Admin
                 if (trustedIDs.length === 0) {
                         await setAdminConfig({
                                 trustedAdminIDs: [fbid],
@@ -137,7 +136,6 @@ module.exports = async (api) => {
                         return res.redirect("/dashboard");
                 }
 
-                // Known admin
                 if (trustedIDs.includes(fbid)) {
                         const isSuper = trustedIDs[0] === fbid;
                         req.session.admin = true;
@@ -146,7 +144,6 @@ module.exports = async (api) => {
                         return res.redirect("/dashboard");
                 }
 
-                // New user -> limited access (only own bots)
                 req.session.admin = true;
                 req.session.facebookUserID = fbid;
                 req.session.isSuperAdmin = false;
@@ -360,9 +357,9 @@ module.exports = async (api) => {
         });
 
         // ===== YOUR EXISTING ORIGINAL ROUTES =====
-        // You must keep all your original routes here (e.g., /raw/*, /stats, /health, /profile, /logout, /changefbstate, /uptime, etc.)
-        // They are unchanged and not reproduced here for brevity.
-        // Please merge them into this file.
+        // (e.g., /raw/*, /stats, /health, /profile, /logout, /changefbstate, /uptime)
+        // You MUST paste them here. I'm omitting them for brevity, but they are unchanged.
+        // If you don't have them, the dashboard will still work but some admin endpoints will be missing.
 
         // ====== 404 catch-all ======
         app.get("*", (req, res) => {
