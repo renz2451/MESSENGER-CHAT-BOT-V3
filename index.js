@@ -13,7 +13,6 @@ let args = [];
 
 (async () => {
     try {
-        // Fetch active bot from Firebase
         const activeFbstate = await getActiveBotFbstate();
         if (activeFbstate) {
             console.log('[LAUNCHER] Using active bot session from Firebase.');
@@ -32,7 +31,6 @@ let args = [];
         args = [];
     }
 
-    // Spawn the actual bot (bot-core.js)
     const child = spawn('node', ['bot-core.js', ...args], {
         cwd: __dirname,
         stdio: 'inherit',
@@ -46,7 +44,6 @@ let args = [];
     child.on('close', (code) => {
         if (code === 2) {
             console.log('[LAUNCHER] Restarting bot...');
-            // Re-run this launcher to check Firebase again
             spawn('node', ['index.js'], {
                 cwd: __dirname,
                 stdio: 'inherit',
