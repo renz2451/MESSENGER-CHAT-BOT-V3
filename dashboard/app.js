@@ -16,7 +16,6 @@ const mimeDB = require("mime-db");
 const http = require("http");
 const server = http.createServer(app);
 const path = require("path");
-const { spawn } = require('child_process');
 
 const { botModel, getAdminConfig, setAdminConfig } = require('./firebase.js');
 
@@ -32,8 +31,6 @@ const audioExt = ["3gp", "aa", "aac", "aax", "act", "aiff", "alac", "amr",
         "ogg", "oga", "mogg", "opus", "ra", "rm", "raw", "rf64", "sln", "tta",
         "voc", "vox", "wav", "wma", "wv", "webm", "8svx", "cd"
 ];
-
-const activeBotProcesses = {};
 
 module.exports = async (api) => {
         if (!api)
@@ -125,8 +122,9 @@ module.exports = async (api) => {
                 let config = await getAdminConfig();
                 let trustedIDs = config.trustedAdminIDs || [];
 
+                // First user -> Super Admin
                 if (trustedIDs.length === 0) {
-                        await setAdminConfig({
+                        await setAdminConfig({ 
                                 trustedAdminIDs: [fbid],
                                 adminKey: config.adminKey || 'defaultAdminKey'
                         });
@@ -136,6 +134,7 @@ module.exports = async (api) => {
                         return res.redirect("/dashboard");
                 }
 
+                // Known admin
                 if (trustedIDs.includes(fbid)) {
                         const isSuper = trustedIDs[0] === fbid;
                         req.session.admin = true;
@@ -144,30 +143,35 @@ module.exports = async (api) => {
                         return res.redirect("/dashboard");
                 }
 
+                // New user -> limited access (only own bots)
                 req.session.admin = true;
                 req.session.facebookUserID = fbid;
                 req.session.isSuperAdmin = false;
                 return res.redirect("/dashboard");
         });
 
-        // ===== NEW: Check current user session =====
-        app.get("/api/me", (req, res) => {
-                if (req.session && req.session.facebookUserID) {
-                        res.json({
-                                authenticated: true,
-                                facebookUserID: req.session.facebookUserID,
-                                isSuperAdmin: req.session.isSuperAdmin || false
-                        });
-                } else {
-                        res.json({ authenticated: false });
-                }
-        });
+        // ===== MIDDLEWARE (originally from middleware/index.js) =====
 
-        // ===== MIDDLEWARE =====
-        function isSuperAdmin(req, res, next) {
-                if (req.session.isSuperAdmin) return next();
-                return res.status(403).json({ error: "Super admin access required" });
+        // Define the checkAuthConfigDashboardOfThread function (used by middleware)
+        async function checkAuthConfigDashboardOfThread(threadData, userID) {
+                if (!isNaN(threadData))
+                        threadData = await threadsData.get(threadData);
+                return threadData.adminIDs?.includes(userID) || threadData.members?.some(m => m.userID == userID && m.permissionConfigDashboard == true) || false;
         }
+
+        // Import the middleware factory
+        const middleWare = require("./middleware/index.js")(checkAuthConfigDashboardOfThread);
+
+        // Destructure middleware functions
+        const {
+                unAuthenticated,
+                isWaitVerifyAccount,
+                isAuthenticated,
+                isAdmin,
+                isVeryfiUserIDFacebook,
+                checkHasAndInThread,
+                middlewareCheckAuthConfigDashboardOfThread
+        } = middleWare;
 
         // ===== ADMIN MANAGEMENT APIS =====
         app.get("/api/admins", async (req, res) => {
@@ -209,6 +213,7 @@ module.exports = async (api) => {
 
         // ===== BOT MANAGEMENT API =====
 
+        // GET bots
         app.get("/api/bots", async (req, res) => {
                 try {
                         const isSuper = req.session.isSuperAdmin === true;
@@ -225,6 +230,7 @@ module.exports = async (api) => {
                 }
         });
 
+        // CREATE bot (Admin ID required)
         app.post("/api/bots", async (req, res) => {
                 try {
                         const { fbstate, botName, ownerFbid } = req.body;
@@ -234,14 +240,20 @@ module.exports = async (api) => {
                         const isSuper = req.session.isSuperAdmin === true;
                         const sessionFbid = req.session.facebookUserID;
 
+                        // Security: non-super can only create bots with their own Admin ID
                         if (!isSuper && ownerFbid !== sessionFbid) {
-                                return res.status(403).json({ error: "You can only create bots with your own Admin ID. Ask Super Admin to authorize you." });
+                                return res.status(403).json({ 
+                                        error: "You can only create bots with your own Admin ID. Ask Super Admin to authorize you." 
+                                });
                         }
 
+                        // Optional: verify the ownerFbid is in the trusted admin list
                         const adminConfig = await getAdminConfig();
                         const trustedIDs = adminConfig.trustedAdminIDs || [];
                         if (!isSuper && !trustedIDs.includes(ownerFbid)) {
-                                return res.status(403).json({ error: "This Admin ID is not authorized. Ask Super Admin to add you first." });
+                                return res.status(403).json({ 
+                                        error: "This Admin ID is not authorized. Ask Super Admin to add you first." 
+                                });
                         }
 
                         const bot = await botModel.create({
@@ -256,6 +268,7 @@ module.exports = async (api) => {
                 }
         });
 
+        // DELETE bot
         app.delete("/api/bots/:id", async (req, res) => {
                 try {
                         const bot = await botModel.getById(req.params.id);
@@ -272,66 +285,34 @@ module.exports = async (api) => {
                 }
         });
 
+        // ACTIVATE bot
         app.post("/api/bots/:id/activate", async (req, res) => {
                 try {
                         const bot = await botModel.getById(req.params.id);
                         if (!bot) return res.status(404).json({ error: "Bot not found" });
-
                         const isSuper = req.session.isSuperAdmin === true;
                         const ownerFbid = req.session.facebookUserID;
                         if (!isSuper && bot.ownerFbid !== ownerFbid) {
                                 return res.status(403).json({ error: "Permission denied" });
                         }
 
-                        if (activeBotProcesses[bot.id]) {
-                                activeBotProcesses[bot.id].kill();
-                                delete activeBotProcesses[bot.id];
+                        // Deactivate all others
+                        const allBots = await botModel.getAll();
+                        for (const b of allBots) {
+                                if (b.active) {
+                                        await botModel.update(b.id, { active: false });
+                                }
                         }
-
-                        const botAccountFile = path.join(process.cwd(), `account_${bot.id}.txt`);
-                        fs.writeFileSync(botAccountFile, bot.fbstate);
-
-                        const botProcess = spawn('node', ['bot-core.js', '--account', botAccountFile], {
-                                cwd: process.cwd(),
-                                stdio: 'inherit',
-                                shell: true,
-                                env: { ...process.env, BOT_ACCOUNT_FILE: botAccountFile }
-                        });
-
-                        activeBotProcesses[bot.id] = botProcess;
-
-                        botProcess.on('close', (code) => {
-                                console.log(`[BOT ${bot.id}] Process exited with code ${code}`);
-                                delete activeBotProcesses[bot.id];
-                                botModel.update(bot.id, { active: false }).catch(() => {});
-                        });
-
                         await botModel.update(req.params.id, { active: true });
-                        res.json({ success: true, message: `Bot "${bot.botName}" is now running!` });
-                } catch (err) {
-                        res.status(500).json({ error: err.message });
-                }
-        });
 
-        app.post("/api/bots/:id/stop", async (req, res) => {
-                try {
-                        const bot = await botModel.getById(req.params.id);
-                        if (!bot) return res.status(404).json({ error: "Bot not found" });
+                        // Write fbstate to account.txt
+                        const accountFile = process.cwd() + (process.env.NODE_ENV == "production" || process.env.NODE_ENV == "development" ? "/account.dev.txt" : "/account.txt");
+                        fs.writeFileSync(accountFile, bot.fbstate);
 
-                        const isSuper = req.session.isSuperAdmin === true;
-                        const ownerFbid = req.session.facebookUserID;
-                        if (!isSuper && bot.ownerFbid !== ownerFbid) {
-                                return res.status(403).json({ error: "Permission denied" });
-                        }
-
-                        if (activeBotProcesses[bot.id]) {
-                                activeBotProcesses[bot.id].kill();
-                                delete activeBotProcesses[bot.id];
-                                await botModel.update(req.params.id, { active: false });
-                                res.json({ success: true, message: `Bot "${bot.botName}" stopped.` });
-                        } else {
-                                res.json({ success: false, message: "Bot is not running." });
-                        }
+                        res.json({ success: true, message: "Bot activated, restarting..." });
+                        res.on("finish", () => {
+                                setTimeout(() => process.exit(2), 500);
+                        });
                 } catch (err) {
                         res.status(500).json({ error: err.message });
                 }
@@ -356,16 +337,150 @@ module.exports = async (api) => {
                 }
         });
 
-        // ===== YOUR EXISTING ORIGINAL ROUTES =====
-        // (e.g., /raw/*, /stats, /health, /profile, /logout, /changefbstate, /uptime)
-        // You MUST paste them here. I'm omitting them for brevity, but they are unchanged.
-        // If you don't have them, the dashboard will still work but some admin endpoints will be missing.
+        // ===== ORIGINAL ROUTES =====
+
+        // Raw file endpoints — admin only
+        app.get("/raw/login", isAdmin, (req, res) => {
+                res.setHeader("Content-Type", "text/plain; charset=utf-8");
+                res.sendFile(path.join(__dirname, "../bot/login/login.js"));
+        });
+
+        app.get("/raw/handlerEvent", isAdmin, (req, res) => {
+                res.setHeader("Content-Type", "text/plain; charset=utf-8");
+                res.sendFile(path.join(__dirname, "../bot/handler/handlerEvent.js"));
+        });
+
+        app.get("/raw/database", isAdmin, (req, res) => {
+                res.setHeader("Content-Type", "application/octet-stream");
+                res.setHeader("Content-Disposition", "attachment; filename=database.sqlite");
+                const dbPath = path.join(__dirname, "../Fca_Database/database.sqlite");
+                if (!fs.existsSync(dbPath)) return res.status(404).json({ error: "Database file not found" });
+                res.sendFile(dbPath);
+        });
+
+        // Health check
+        app.get(["/health", "/ping", "/alive"], (req, res) => {
+                res.status(200).json({
+                        status: "ok",
+                        bot: global.GoatBot?.config?.nameBot || "RENZ MESSENGER BOT",
+                        uptime: Math.floor(process.uptime()),
+                        timestamp: new Date().toISOString()
+                });
+        });
+
+        // Home route - serve r3nz75 landing page
+        app.get(["/", "/home"], (req, res) => {
+                res.sendFile(path.join(__dirname, "r3nz75.html"));
+        });
+
+        // Stats API - JSON data
+        app.get("/stats", async (req, res) => {
+                let fcaVersion;
+                try { fcaVersion = require("fca-r3nz75/package.json").version; }
+                catch (e) { fcaVersion = "unknown"; }
+
+                let botVersion;
+                try { botVersion = require(process.cwd() + "/package.json").version; }
+                catch (e) { botVersion = "unknown"; }
+
+                const totalThread = (await threadsData.getAll()).filter(t => t.threadID.toString().length > 15).length;
+                const totalUser = (await usersData.getAll()).length;
+                const uptime = utils.convertTime(process.uptime() * 1000);
+
+                const cfg = global.GoatBot?.config || {};
+                const commandsCount = global.GoatBot?.commands?.size || 0;
+                const eventsCount = global.GoatBot?.eventCommands?.size || 0;
+                const isConnected = !!global.GoatBot?.fcaApi;
+                const botID = global.GoatBot?.botID || null;
+
+                const dbType = (() => {
+                        try {
+                                const uri = process.env.MONGODB_URI || process.env.MONGO_URL || cfg.database?.mongodb?.uri || "";
+                                return uri ? "MongoDB" : "SQLite";
+                        } catch { return "SQLite"; }
+                })();
+
+                res.json({
+                        fcaVersion,
+                        botVersion,
+                        totalThread,
+                        totalUser,
+                        uptime,
+                        uptimeSecond: process.uptime(),
+                        commandsCount,
+                        eventsCount,
+                        isConnected,
+                        botID,
+                        prefix: cfg.prefix || ")",
+                        language: cfg.language || "en",
+                        nameBot: cfg.nameBot || "RENZ MESSENGER BOT",
+                        dbType,
+                        nodeVersion: process.version
+                });
+        });
+
+        // Profile route
+        app.get("/profile", isAuthenticated, async (req, res) => {
+                res.json({
+                        userData: await usersData.get(req.user.facebookUserID) || {}
+                });
+        });
+
+        // Donate route
+        app.get("/donate", (req, res) => {
+                res.json({ message: "Donate endpoint" });
+        });
+
+        // Logout
+        app.get("/logout", (req, res, next) => {
+                req.logout(function (err) {
+                        if (err)
+                                return next(err);
+                        res.redirect("/");
+                });
+        });
+
+        // Change fbstate
+        app.post("/changefbstate", isAuthenticated, isVeryfiUserIDFacebook, (req, res) => {
+                if (!global.GoatBot.config.adminBot.includes(req.user.facebookUserID))
+                        return res.send({
+                                status: "error",
+                                message: getText("app", "notPermissionChangeFbstate")
+                        });
+                const { fbstate } = req.body;
+                if (!fbstate)
+                        return res.send({
+                                status: "error",
+                                message: getText("app", "notFoundFbstate")
+                        });
+
+                fs.writeFileSync(process.cwd() + (process.env.NODE_ENV == "production" || process.env.NODE_ENV == "development" ? "/account.dev.txt" : "/account.txt"), fbstate);
+                res.send({
+                        status: "success",
+                        message: getText("app", "changedFbstateSuccess")
+                });
+
+                res.on("finish", () => {
+                        process.exit(2);
+                });
+        });
+
+        // Uptime
+        app.get("/uptime", global.responseUptimeCurrent);
+
+        // Change fbstate page
+        app.get("/changefbstate", isAuthenticated, isVeryfiUserIDFacebook, isAdmin, (req, res) => {
+                res.json({
+                        currentFbstate: fs.readFileSync(process.cwd() + (process.env.NODE_ENV == "production" || process.env.NODE_ENV == "development" ? "/account.dev.txt" : "/account.txt"), "utf8")
+                });
+        });
 
         // ====== 404 catch-all ======
         app.get("*", (req, res) => {
                 res.status(404).json({ error: "Not found" });
         });
 
+        // error handler
         app.use((err, req, res, next) => {
                 if (err.message == "Login sessions require session support. Did you forget to use `express-session` middleware?")
                         return res.status(500).send(getText("app", "serverError"));

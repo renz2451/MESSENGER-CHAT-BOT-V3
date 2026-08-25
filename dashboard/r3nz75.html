@@ -127,6 +127,7 @@
     .rv.in { opacity: 1; transform: translateY(0); }
     @media(max-width:768px) { nav { padding: 10px 16px; margin-bottom:36px; top:10px; } .hero { padding:24px 0 48px; } .hero h1 { font-size: clamp(32px, 10vw, 52px); } .feat-grid { grid-template-columns:1fr; } .sc-body, .sc-head { padding:18px; } .stats-row { grid-template-columns:repeat(2,1fr); } .status-bar { gap:10px; } }
 
+    /* Bot Management extras */
     .bot-item { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; padding: 14px 18px; background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.06); border-radius: 14px; margin-bottom: 10px; transition: .2s; }
     .bot-item:hover { border-color: var(--p); background: rgba(124,58,237,.06); }
     .bot-item.active { border-color: var(--g); background: rgba(16,185,129,.08); }
@@ -137,8 +138,6 @@
     .btn-sm { padding: 6px 14px; font-size: 12px; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; transition: .2s; display: inline-flex; align-items: center; gap: 6px; }
     .btn-sm.activate { background: var(--g); color: #fff; }
     .btn-sm.activate:hover { background: #059669; transform: scale(1.03); }
-    .btn-sm.stop { background: var(--gold); color: #000; }
-    .btn-sm.stop:hover { background: #d97706; transform: scale(1.03); }
     .btn-sm.delete { background: var(--r); color: #fff; }
     .btn-sm.delete:hover { background: #dc2626; transform: scale(1.03); }
     .btn-sm:disabled { opacity: .5; cursor: not-allowed; transform: none !important; }
@@ -156,66 +155,6 @@
     #adminPanel h3 { font-size: 16px; font-weight: 800; margin-bottom: 12px; color: var(--p2); }
     #adminList div { display: flex; justify-content: space-between; padding: 8px 12px; border-bottom: 1px solid var(--border); font-size: 14px; }
     #adminList div span { font-family: 'JetBrains Mono', monospace; }
-
-    .login-container {
-      max-width: 420px;
-      margin: 60px auto;
-      background: var(--card);
-      backdrop-filter: blur(20px);
-      border: 1px solid var(--border);
-      border-radius: 24px;
-      padding: 40px 32px;
-      text-align: center;
-    }
-    .login-container h2 {
-      font-size: 24px;
-      font-weight: 800;
-      margin-bottom: 8px;
-    }
-    .login-container p {
-      color: var(--muted);
-      font-size: 14px;
-      margin-bottom: 24px;
-    }
-    .login-container input {
-      width: 100%;
-      padding: 14px 16px;
-      border-radius: 12px;
-      border: 1px solid var(--border);
-      background: rgba(0,0,0,0.3);
-      color: var(--txt);
-      font-size: 16px;
-      margin-bottom: 16px;
-      outline: none;
-      transition: 0.3s;
-    }
-    .login-container input:focus {
-      border-color: var(--p);
-      box-shadow: 0 0 0 3px rgba(124,58,237,0.2);
-    }
-    .login-container button {
-      width: 100%;
-      padding: 14px;
-      border: none;
-      border-radius: 12px;
-      background: linear-gradient(135deg, var(--p), #5b21b6);
-      color: #fff;
-      font-size: 16px;
-      font-weight: 700;
-      cursor: pointer;
-      transition: 0.3s;
-    }
-    .login-container button:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 8px 24px rgba(124,58,237,0.4);
-    }
-    .login-error {
-      color: var(--r);
-      font-size: 14px;
-      margin-top: 12px;
-      display: none;
-    }
-    .hidden { display: none !important; }
   </style>
 </head>
 <body>
@@ -229,6 +168,7 @@
   <div id="stars"></div>
 
   <div class="wrap">
+    <!-- NAV -->
     <nav class="rv">
       <div class="nav-brand" id="brandName">RENZ MESSENGER BOT</div>
       <div id="navBadge">
@@ -237,133 +177,127 @@
       </div>
     </nav>
 
-    <!-- LOGIN / REGISTER -->
-    <div id="loginSection" class="login-container rv">
-      <h2>🔐 Login / Register</h2>
-      <p>Enter your Facebook ID to access your bots</p>
-      <input type="text" id="fbidInput" placeholder="Enter your Facebook ID (e.g. 61593252647752)" />
-      <button onclick="loginWithFBID()">Continue →</button>
-      <div id="loginError" class="login-error">⚠️ Please enter a valid Facebook ID.</div>
+    <!-- HERO -->
+    <section class="hero rv">
+      <div class="hero-avatar"><i class="fi fi-sr-robot"></i><div class="avatar-status" id="avatarStatus"></div></div>
+      <h1 id="heroTitle">RENZ MESSENGER BOT</h1>
+      <p class="hero-sub">Next‑gen Facebook Messenger automation · AI commands · Auto‑healing core · Made by <strong style="color:#c4b5fd">r3nz75</strong></p>
+      <div class="hero-actions">
+        <a href="/dashboard" class="btn btn-primary"><i class="fi fi-rr-rocket"></i> Dashboard Portal</a>
+        <a href="https://github.com/renz2451/MESSENGER-CHAT-BOT-V3" target="_blank" class="btn btn-ghost"><i class="fi fi-rr-code-branch"></i> Source Code</a>
+      </div>
+    </section>
+
+    <!-- SESSION CARD -->
+    <div class="sec-label rv"><i class="fi fi-rr-key"></i> Facebook Session</div>
+    <div class="session-card rv">
+      <div class="sc-head">
+        <div class="sc-head-icon"><i class="fi fi-rr-lock"></i></div>
+        <div>
+          <div class="sc-title">Set Facebook Session</div>
+          <div class="sc-sub">Paste your fbstate / cookies JSON to connect the bot to Messenger</div>
+        </div>
+      </div>
+      <div class="sc-body">
+        <div>
+          <label class="field-label">Admin Key <span style="color:rgba(100,116,139,.6)">(config.json → dashBoard.adminKey)</span></label>
+          <input type="password" id="keyInp" class="field-inp" placeholder="Enter your admin key" autocomplete="off" />
+        </div>
+        <div>
+          <label class="field-label">Facebook Session JSON</label>
+          <textarea id="stateInp" class="field-inp" placeholder='[{"key":"c_user","value":"123..."},{"key":"xs","value":"abc..."}]'></textarea>
+        </div>
+        <div id="scMsg" class="sc-msg"></div>
+        <button id="scBtn" class="sc-btn" onclick="sendSession()">
+          <span id="scIco"><i class="fi fi-rr-disk"></i></span><span id="scLbl">Save Session & Restart Bot</span>
+        </button>
+      </div>
     </div>
 
-    <!-- DASHBOARD (hidden until login) -->
-    <div id="dashboardContent" class="hidden">
-      <section class="hero rv">
-        <div class="hero-avatar"><i class="fi fi-sr-robot"></i><div class="avatar-status" id="avatarStatus"></div></div>
-        <h1 id="heroTitle">RENZ MESSENGER BOT</h1>
-        <p class="hero-sub">Next‑gen Facebook Messenger automation · AI commands · Auto‑healing core · Made by <strong style="color:#c4b5fd">r3nz75</strong></p>
-        <div class="hero-actions">
-          <a href="/dashboard" class="btn btn-primary"><i class="fi fi-rr-rocket"></i> Dashboard Portal</a>
-          <a href="https://github.com/renz2451/MESSENGER-CHAT-BOT-V3" target="_blank" class="btn btn-ghost"><i class="fi fi-rr-code-branch"></i> Source Code</a>
-        </div>
-      </section>
-
-      <!-- SESSION CARD -->
-      <div class="sec-label rv"><i class="fi fi-rr-key"></i> Facebook Session</div>
-      <div class="session-card rv">
-        <div class="sc-head">
-          <div class="sc-head-icon"><i class="fi fi-rr-lock"></i></div>
-          <div>
-            <div class="sc-title">Set Facebook Session</div>
-            <div class="sc-sub">Paste your fbstate / cookies JSON to connect the bot to Messenger</div>
-          </div>
-        </div>
-        <div class="sc-body">
-          <div>
-            <label class="field-label">Admin Key <span style="color:rgba(100,116,139,.6)">(config.json → dashBoard.adminKey)</span></label>
-            <input type="password" id="keyInp" class="field-inp" placeholder="Enter your admin key" autocomplete="off" />
-          </div>
-          <div>
-            <label class="field-label">Facebook Session JSON</label>
-            <textarea id="stateInp" class="field-inp" placeholder='[{"key":"c_user","value":"123..."},{"key":"xs","value":"abc..."}]'></textarea>
-          </div>
-          <div id="scMsg" class="sc-msg"></div>
-          <button id="scBtn" class="sc-btn" onclick="sendSession()">
-            <span id="scIco"><i class="fi fi-rr-disk"></i></span><span id="scLbl">Save Session & Restart Bot</span>
-          </button>
+    <!-- ===== BOT MANAGEMENT CARD (with Admin Panel) ===== -->
+    <div class="sec-label rv"><i class="fi fi-rr-database"></i> Bot Management</div>
+    <div class="session-card rv">
+      <div class="sc-head">
+        <div class="sc-head-icon"><i class="fi fi-rr-layer-group"></i></div>
+        <div>
+          <div class="sc-title">Your Bots</div>
+          <div class="sc-sub">Create, activate, or delete bots. Only one bot can be active at a time.</div>
         </div>
       </div>
-
-      <!-- BOT MANAGEMENT -->
-      <div class="sec-label rv"><i class="fi fi-rr-database"></i> Bot Management</div>
-      <div class="session-card rv">
-        <div class="sc-head">
-          <div class="sc-head-icon"><i class="fi fi-rr-layer-group"></i></div>
-          <div>
-            <div class="sc-title">Your Bots</div>
-            <div class="sc-sub">Create, activate, or delete bots. Each bot runs as a separate process.</div>
+      <div class="sc-body">
+        <!-- Create Bot Form -->
+        <div class="create-bot-form">
+          <div class="row">
+            <input type="text" id="newAdminId" class="field-inp" placeholder="Admin ID (required)" required />
+            <input type="text" id="newBotName" class="field-inp" placeholder="Bot name (optional)" />
+            <button id="createBotBtn" onclick="createBot()"><i class="fi fi-rr-plus"></i> Create Bot</button>
           </div>
+          <textarea id="newBotFbstate" class="field-inp" placeholder='Paste fbstate JSON here for this bot...'></textarea>
         </div>
-        <div class="sc-body">
-          <div class="create-bot-form">
-            <div class="row">
-              <input type="text" id="newAdminId" class="field-inp" placeholder="Admin ID (required)" required />
-              <input type="text" id="newBotName" class="field-inp" placeholder="Bot name (optional)" />
-              <button id="createBotBtn" onclick="createBot()"><i class="fi fi-rr-plus"></i> Create Bot</button>
-            </div>
-            <textarea id="newBotFbstate" class="field-inp" placeholder='Paste fbstate JSON here for this bot...'></textarea>
-          </div>
-          <div id="botList"><p>Loading your bots...</p></div>
-          <div id="botMsg" class="sc-msg" style="display:none;"></div>
+        <!-- Bot List -->
+        <div id="botList"><p>Loading your bots...</p></div>
+        <div id="botMsg" class="sc-msg" style="display:none;"></div>
 
-          <!-- ADMIN PANEL (Super Admin only) -->
-          <div id="adminPanel" style="display:none; margin-top:20px; border-top:1px solid var(--border); padding-top:20px;">
-            <h3>👑 Manage Admins</h3>
-            <div style="display:flex; gap:10px; margin-bottom:10px;">
-              <input type="text" id="newAdminIdInput" class="field-inp" placeholder="Enter Facebook ID to authorize" />
-              <button onclick="addAdmin()" class="btn-sm activate">➕ Add Admin</button>
-            </div>
-            <div id="adminList"><p>Loading admins...</p></div>
+        <!-- ===== ADMIN PANEL (only visible to Super Admin) ===== -->
+        <div id="adminPanel" style="display:none; margin-top:20px; border-top:1px solid var(--border); padding-top:20px;">
+          <h3>👑 Manage Admins</h3>
+          <div style="display:flex; gap:10px; margin-bottom:10px;">
+            <input type="text" id="newAdminIdInput" class="field-inp" placeholder="Enter Facebook ID to authorize" />
+            <button onclick="addAdmin()" class="btn-sm activate">➕ Add Admin</button>
           </div>
+          <div id="adminList"><p>Loading admins...</p></div>
         </div>
       </div>
-
-      <!-- STATS -->
-      <div class="sec-label rv"><i class="fi fi-rr-chart-line"></i> Live Stats</div>
-      <div class="stats-row rv">
-        <div class="stat-box"><span class="stat-ico"><i class="fi fi-rr-comment-dots"></i></span><div class="stat-val" id="sGroups"><span class="sk"></span></div><div class="stat-lbl">Groups</div></div>
-        <div class="stat-box"><span class="stat-ico"><i class="fi fi-rr-users"></i></span><div class="stat-val" id="sUsers"><span class="sk"></span></div><div class="stat-lbl">Users</div></div>
-        <div class="stat-box"><span class="stat-ico"><i class="fi fi-rr-terminal"></i></span><div class="stat-val" id="sCmds"><span class="sk"></span></div><div class="stat-lbl">Commands</div></div>
-        <div class="stat-box"><span class="stat-ico"><i class="fi fi-rr-clock"></i></span><div class="stat-val" id="sUp"><span class="sk"></span></div><div class="stat-lbl">Uptime</div></div>
-      </div>
-
-      <!-- SYSTEM INFO -->
-      <div class="sec-label rv"><i class="fi fi-rr-info"></i> System Info</div>
-      <div class="status-bar rv">
-        <div class="sb-item"><span class="sb-key">Prefix</span><span class="sb-val" id="iPrefix"><span class="sk" style="min-width:16px"></span></span></div>
-        <div class="sb-item"><span class="sb-key">Version</span><span class="sb-val" id="iVer"><span class="sk"></span></span></div>
-        <div class="sb-item"><span class="sb-key">Runtime</span><span class="sb-val" id="iNode"><span class="sk"></span></span></div>
-        <div class="sb-item"><span class="sb-key">Database</span><span class="sb-val" id="iDB"><span class="sk"></span></span></div>
-        <div class="sb-item"><span class="sb-key">Language</span><span class="sb-val" id="iLang"><span class="sk" style="min-width:24px"></span></span></div>
-        <div class="sb-item"><span class="sb-key">FCA</span><span class="sb-val" id="iFCA"><span class="sk"></span></span></div>
-        <div class="sb-item"><span class="sb-key">Events</span><span class="sb-val" id="iEvt"><span class="sk" style="min-width:20px"></span></span></div>
-        <div class="sb-item"><span class="sb-key">Status</span><span class="sb-val" id="iStatus"><span class="sk"></span></span></div>
-      </div>
-      <div class="info-grid rv">
-        <div class="info-pill"><div class="pill-dot"></div><div><span class="pill-key">Prefix</span><span class="pill-val" id="pPrefix">—</span></div></div>
-        <div class="info-pill"><div class="pill-dot" style="background:var(--c);box-shadow:0 0 8px var(--c)"></div><div><span class="pill-key">Bot Version</span><span class="pill-val" id="pVer">—</span></div></div>
-        <div class="info-pill"><div class="pill-dot" style="background:var(--gold);box-shadow:0 0 8px var(--gold)"></div><div><span class="pill-key">Node.js</span><span class="pill-val" id="pNode">—</span></div></div>
-        <div class="info-pill"><div class="pill-dot" style="background:var(--pink);box-shadow:0 0 8px var(--pink)"></div><div><span class="pill-key">Database</span><span class="pill-val" id="pDB">—</span></div></div>
-        <div class="info-pill"><div class="pill-dot" style="background:var(--p2);box-shadow:0 0 8px var(--p2)"></div><div><span class="pill-key">Language</span><span class="pill-val" id="pLang">—</span></div></div>
-        <div class="info-pill"><div class="pill-dot" style="background:var(--c);box-shadow:0 0 8px var(--c)"></div><div><span class="pill-key">FCA Version</span><span class="pill-val" id="pFCA">—</span></div></div>
-      </div>
-
-      <!-- FEATURES -->
-      <div class="sec-label rv"><i class="fi fi-rr-star"></i> Features</div>
-      <div class="feat-grid">
-        <div class="feat-card rv"><span class="feat-emo"><i class="fi fi-rr-brain"></i></span><h3>AI & GPT Suite</h3><p>ChatGPT, Midjourney, image generation, translation — pure intelligence in any Messenger chat.</p></div>
-        <div class="feat-card rv"><span class="feat-emo"><i class="fi fi-rr-shield"></i></span><h3>6-Tier Permission System</h3><p>Creator, Dev, Admin Bot, Premium, VIP, Group Admin — complete granular role control.</p></div>
-        <div class="feat-card rv"><span class="feat-emo"><i class="fi fi-rr-paint-brush"></i></span><h3>Canvas Welcome Cards</h3><p>Stunning canvas-rendered welcome & leave images sent automatically when members join.</p></div>
-        <div class="feat-card rv"><span class="feat-emo"><i class="fi fi-rr-download"></i></span><h3>Media Downloader</h3><p>TikTok, YouTube, Facebook, Instagram — download and deliver media directly to any chat.</p></div>
-        <div class="feat-card rv"><span class="feat-emo"><i class="fi fi-rr-heart-pulse"></i></span><h3>Auto-Heal Core</h3><p>Exponential-backoff crash recovery. Bot is back online within seconds, not minutes.</p></div>
-        <div class="feat-card rv"><span class="feat-emo"><i class="fi fi-rr-engine"></i></span><h3>Custom FCA Engine</h3><p>Patched fca-r3nz75: stable MQTT listener, reconnect logic, full message parsing.</p></div>
-      </div>
-
-      <footer class="rv">
-        <div>Made by <a href="https://github.com/ncazad" target="_blank">r3nz75</a> &nbsp;·&nbsp; Based on <a href="https://github.com/renz2451/MESSENGER-CHAT-BOT-V3" target="_blank">RENZ MESSENGER BOT</a></div>
-        <div style="font-size:12px;color:#334155;margin-top:6px">© 2026 RENZ MESSENGER BOT — All rights reserved</div>
-      </footer>
     </div>
+
+    <!-- LIVE STATS -->
+    <div class="sec-label rv"><i class="fi fi-rr-chart-line"></i> Live Stats</div>
+    <div class="stats-row rv">
+      <div class="stat-box"><span class="stat-ico"><i class="fi fi-rr-comment-dots"></i></span><div class="stat-val" id="sGroups"><span class="sk"></span></div><div class="stat-lbl">Groups</div></div>
+      <div class="stat-box"><span class="stat-ico"><i class="fi fi-rr-users"></i></span><div class="stat-val" id="sUsers"><span class="sk"></span></div><div class="stat-lbl">Users</div></div>
+      <div class="stat-box"><span class="stat-ico"><i class="fi fi-rr-terminal"></i></span><div class="stat-val" id="sCmds"><span class="sk"></span></div><div class="stat-lbl">Commands</div></div>
+      <div class="stat-box"><span class="stat-ico"><i class="fi fi-rr-clock"></i></span><div class="stat-val" id="sUp"><span class="sk"></span></div><div class="stat-lbl">Uptime</div></div>
+    </div>
+
+    <!-- INFO BAR -->
+    <div class="sec-label rv"><i class="fi fi-rr-info"></i> System Info</div>
+    <div class="status-bar rv">
+      <div class="sb-item"><span class="sb-key">Prefix</span><span class="sb-val" id="iPrefix"><span class="sk" style="min-width:16px"></span></span></div>
+      <div class="sb-item"><span class="sb-key">Version</span><span class="sb-val" id="iVer"><span class="sk"></span></span></div>
+      <div class="sb-item"><span class="sb-key">Runtime</span><span class="sb-val" id="iNode"><span class="sk"></span></span></div>
+      <div class="sb-item"><span class="sb-key">Database</span><span class="sb-val" id="iDB"><span class="sk"></span></span></div>
+      <div class="sb-item"><span class="sb-key">Language</span><span class="sb-val" id="iLang"><span class="sk" style="min-width:24px"></span></span></div>
+      <div class="sb-item"><span class="sb-key">FCA</span><span class="sb-val" id="iFCA"><span class="sk"></span></span></div>
+      <div class="sb-item"><span class="sb-key">Events</span><span class="sb-val" id="iEvt"><span class="sk" style="min-width:20px"></span></span></div>
+      <div class="sb-item"><span class="sb-key">Status</span><span class="sb-val" id="iStatus"><span class="sk"></span></span></div>
+    </div>
+
+    <!-- INFO PILLS -->
+    <div class="info-grid rv">
+      <div class="info-pill"><div class="pill-dot"></div><div><span class="pill-key">Prefix</span><span class="pill-val" id="pPrefix">—</span></div></div>
+      <div class="info-pill"><div class="pill-dot" style="background:var(--c);box-shadow:0 0 8px var(--c)"></div><div><span class="pill-key">Bot Version</span><span class="pill-val" id="pVer">—</span></div></div>
+      <div class="info-pill"><div class="pill-dot" style="background:var(--gold);box-shadow:0 0 8px var(--gold)"></div><div><span class="pill-key">Node.js</span><span class="pill-val" id="pNode">—</span></div></div>
+      <div class="info-pill"><div class="pill-dot" style="background:var(--pink);box-shadow:0 0 8px var(--pink)"></div><div><span class="pill-key">Database</span><span class="pill-val" id="pDB">—</span></div></div>
+      <div class="info-pill"><div class="pill-dot" style="background:var(--p2);box-shadow:0 0 8px var(--p2)"></div><div><span class="pill-key">Language</span><span class="pill-val" id="pLang">—</span></div></div>
+      <div class="info-pill"><div class="pill-dot" style="background:var(--c);box-shadow:0 0 8px var(--c)"></div><div><span class="pill-key">FCA Version</span><span class="pill-val" id="pFCA">—</span></div></div>
+    </div>
+
+    <!-- FEATURES -->
+    <div class="sec-label rv"><i class="fi fi-rr-star"></i> Features</div>
+    <div class="feat-grid">
+      <div class="feat-card rv"><span class="feat-emo"><i class="fi fi-rr-brain"></i></span><h3>AI & GPT Suite</h3><p>ChatGPT, Midjourney, image generation, translation — pure intelligence in any Messenger chat.</p></div>
+      <div class="feat-card rv"><span class="feat-emo"><i class="fi fi-rr-shield"></i></span><h3>6-Tier Permission System</h3><p>Creator, Dev, Admin Bot, Premium, VIP, Group Admin — complete granular role control.</p></div>
+      <div class="feat-card rv"><span class="feat-emo"><i class="fi fi-rr-paint-brush"></i></span><h3>Canvas Welcome Cards</h3><p>Stunning canvas-rendered welcome & leave images sent automatically when members join.</p></div>
+      <div class="feat-card rv"><span class="feat-emo"><i class="fi fi-rr-download"></i></span><h3>Media Downloader</h3><p>TikTok, YouTube, Facebook, Instagram — download and deliver media directly to any chat.</p></div>
+      <div class="feat-card rv"><span class="feat-emo"><i class="fi fi-rr-heart-pulse"></i></span><h3>Auto-Heal Core</h3><p>Exponential-backoff crash recovery. Bot is back online within seconds, not minutes.</p></div>
+      <div class="feat-card rv"><span class="feat-emo"><i class="fi fi-rr-engine"></i></span><h3>Custom FCA Engine</h3><p>Patched fca-r3nz75: stable MQTT listener, reconnect logic, full message parsing.</p></div>
+    </div>
+
+    <!-- FOOTER -->
+    <footer class="rv">
+      <div>Made by <a href="https://github.com/ncazad" target="_blank">r3nz75</a> &nbsp;·&nbsp; Based on <a href="https://github.com/renz2451/MESSENGER-CHAT-BOT-V3" target="_blank">RENZ MESSENGER BOT</a></div>
+      <div style="font-size:12px;color:#334155;margin-top:6px">© 2026 RENZ MESSENGER BOT — All rights reserved</div>
+    </footer>
   </div>
 
   <script>
@@ -387,35 +321,6 @@
         sc.appendChild(s);
       }
     })();
-
-    // ===== LOGIN / REGISTER =====
-    async function loginWithFBID() {
-      const fbid = document.getElementById('fbidInput').value.trim();
-      const errorEl = document.getElementById('loginError');
-      if (!fbid || fbid.length < 10) {
-        errorEl.style.display = 'block';
-        return;
-      }
-      errorEl.style.display = 'none';
-      window.location.href = `/dashboard/auth/${fbid}`;
-    }
-
-    async function checkAuth() {
-      try {
-        const res = await fetch('/api/me');
-        if (res.ok) {
-          const data = await res.json();
-          if (data.authenticated) {
-            document.getElementById('loginSection').classList.add('hidden');
-            document.getElementById('dashboardContent').classList.remove('hidden');
-            loadStats();
-            loadBots();
-            loadAdmins();
-            checkAdminStatus();
-          }
-        }
-      } catch (e) {}
-    }
 
     // ===== REVEAL =====
     const rv = new IntersectionObserver(entries => {
@@ -453,6 +358,7 @@
       }
     }
 
+    // ===== LOAD STATS =====
     async function loadStats() {
       try {
         const r = await fetch('/stats');
@@ -481,7 +387,10 @@
         ['sGroups','sUsers','sCmds','sUp'].forEach(id => document.getElementById(id).textContent = '!');
       }
     }
+    loadStats();
+    setInterval(loadStats, 30000);
 
+    // ===== SESSION SUBMIT =====
     async function sendSession() {
       const key = document.getElementById('keyInp').value.trim();
       const state = document.getElementById('stateInp').value.trim();
@@ -528,7 +437,10 @@
       m.style.display = 'block';
     }
 
+    // ============================================================
     // ===== BOT MANAGEMENT =====
+    // ============================================================
+
     async function loadBots() {
       const list = document.getElementById('botList');
       try {
@@ -542,7 +454,7 @@
         let html = '';
         bots.forEach(bot => {
           const activeClass = bot.active ? 'active' : '';
-          const statusBadge = bot.active ? '<span class="bot-status-badge">● Running</span>' : '<span class="bot-status-badge inactive">○ Stopped</span>';
+          const statusBadge = bot.active ? '<span class="bot-status-badge">● Active</span>' : '<span class="bot-status-badge inactive">○ Inactive</span>';
           html += `
             <div class="bot-item ${activeClass}">
               <div class="bot-info">
@@ -550,7 +462,7 @@
                 <div class="bot-meta">Owner: ${escapeHtml(bot.ownerFbid)} · ID: ${bot.id}</div>
               </div>
               <div class="bot-actions">
-                ${!bot.active ? `<button class="btn-sm activate" onclick="activateBot('${bot.id}')"><i class="fi fi-rr-play"></i> Start</button>` : `<button class="btn-sm stop" onclick="stopBot('${bot.id}')"><i class="fi fi-rr-stop"></i> Stop</button>`}
+                ${!bot.active ? `<button class="btn-sm activate" onclick="activateBot('${bot.id}')"><i class="fi fi-rr-play"></i> Activate</button>` : ''}
                 <button class="btn-sm delete" onclick="deleteBot('${bot.id}')"><i class="fi fi-rr-trash"></i> Delete</button>
               </div>
             </div>
@@ -565,11 +477,13 @@
       }
     }
 
+    // ===== CREATE BOT (Admin ID required) =====
     async function createBot() {
       const adminId = document.getElementById('newAdminId').value.trim();
       const name = document.getElementById('newBotName').value.trim();
       const fbstate = document.getElementById('newBotFbstate').value.trim();
       const msg = document.getElementById('botMsg');
+
       if (!adminId) {
         showBotMsg('err', '⚠️ Admin ID is required.');
         return;
@@ -582,10 +496,12 @@
         showBotMsg('err', '⚠️ Invalid JSON format. Must be a valid fbstate array.');
         return;
       }
+
       const btn = document.getElementById('createBotBtn');
       btn.disabled = true;
       btn.innerHTML = '<i class="fi fi-rr-spinner fi-spin"></i> Creating...';
       msg.style.display = 'none';
+
       try {
         const res = await fetch('/api/bots', {
           method: 'POST',
@@ -610,35 +526,17 @@
     }
 
     async function activateBot(id) {
-      if (!confirm('Start this bot? It will run as a separate process.')) return;
+      if (!confirm('Activating this bot will switch the active session and restart the service. Continue?')) return;
       const msg = document.getElementById('botMsg');
       msg.style.display = 'none';
       try {
         const res = await fetch(`/api/bots/${id}/activate`, { method: 'POST' });
         const data = await res.json();
         if (data.success) {
-          showBotMsg('ok', '✅ ' + data.message);
-          loadBots();
+          showBotMsg('ok', '✅ Bot activated! The service will restart shortly.');
+          setTimeout(() => location.reload(), 3000);
         } else {
           showBotMsg('err', '❌ ' + (data.error || 'Activation failed'));
-        }
-      } catch (err) {
-        showBotMsg('err', '❌ Network error: ' + err.message);
-      }
-    }
-
-    async function stopBot(id) {
-      if (!confirm('Stop this bot?')) return;
-      const msg = document.getElementById('botMsg');
-      msg.style.display = 'none';
-      try {
-        const res = await fetch(`/api/bots/${id}/stop`, { method: 'POST' });
-        const data = await res.json();
-        if (data.success) {
-          showBotMsg('ok', '✅ ' + data.message);
-          loadBots();
-        } else {
-          showBotMsg('err', '❌ ' + (data.error || 'Stop failed'));
         }
       } catch (err) {
         showBotMsg('err', '❌ Network error: ' + err.message);
@@ -734,6 +632,7 @@
       } catch (e) {}
     }
 
+    // ===== HELPERS =====
     function escapeHtml(text) {
       if (!text) return '';
       const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
@@ -741,7 +640,11 @@
     }
 
     // ===== INIT =====
-    checkAuth();
+    checkAdminStatus();
+    loadAdmins();
+    loadBots();
+    setInterval(loadBots, 30000);
+    setInterval(loadAdmins, 30000);
   </script>
 </body>
 </html>
