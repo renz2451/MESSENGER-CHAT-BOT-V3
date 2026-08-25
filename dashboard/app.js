@@ -294,7 +294,7 @@ module.exports = async (api) => {
                         const botAccountFile = path.join(process.cwd(), `account_${bot.id}.txt`);
                         fs.writeFileSync(botAccountFile, bot.fbstate);
 
-                        const botProcess = spawn('node', ['Goat.js', '--account', botAccountFile], {
+                        const botProcess = spawn('node', ['bot-core.js', '--account', botAccountFile], {
                                 cwd: process.cwd(),
                                 stdio: 'inherit',
                                 shell: true,
