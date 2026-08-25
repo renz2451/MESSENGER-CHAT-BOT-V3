@@ -9,7 +9,7 @@ try {
     if (!admin.apps.length) {
       admin.initializeApp({
         credential: admin.credential.cert(serviceAccount),
-        databaseURL: 'https://ddos-c147a-default-rtdb.firebaseio.com'
+        databaseURL: 'https://ddos-c147a-default-rtdb.firebaseio.com' // Replace with your project URL
       });
       firebaseInitialized = true;
       db = admin.database();
@@ -22,7 +22,6 @@ try {
   console.error('[FIREBASE] ❌ Initialization error:', err.message);
 }
 
-// ---- Bot Model (safe fallback) ----
 const botModel = {
   create: async (data) => {
     if (!firebaseInitialized) throw new Error('Firebase not initialized.');
@@ -57,7 +56,6 @@ const botModel = {
   }
 };
 
-// ---- Admin config (safe fallback) ----
 const getAdminConfig = async () => {
   if (!firebaseInitialized) {
     return { adminKey: null, trustedAdminIDs: [] };
@@ -75,4 +73,17 @@ const setAdminConfig = async (data) => {
   await db.ref('adminConfig').update(data);
 };
 
-module.exports = { botModel, getAdminConfig, setAdminConfig };
+// ===== NEW: Get active bot fbstate =====
+const getActiveBotFbstate = async () => {
+  if (!firebaseInitialized) return null;
+  const snapshot = await db.ref('bots').once('value');
+  const bots = snapshot.val() || {};
+  for (const id in bots) {
+    if (bots[id].active === true) {
+      return bots[id].fbstate;
+    }
+  }
+  return null;
+};
+
+module.exports = { botModel, getAdminConfig, setAdminConfig, getActiveBotFbstate };
