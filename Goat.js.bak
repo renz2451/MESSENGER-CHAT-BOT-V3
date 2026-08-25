@@ -70,19 +70,15 @@ async function loginBot() {
 
         let fbstate = null;
 
-        // ===== FIX: Get fbstate from environment AND parse it correctly =====
         if (BOT_FBSTATE) {
             try {
-                // First, try to parse as JSON
                 fbstate = JSON.parse(BOT_FBSTATE);
                 console.log(`[BOT ${BOT_ID}] ✅ Loaded fbstate from environment`);
             } catch (parseError) {
                 console.error(`[BOT ${BOT_ID}] ❌ Failed to parse fbstate JSON:`, parseError.message);
-                console.error(`[BOT ${BOT_ID}] 📝 Raw fbstate preview: ${BOT_FBSTATE.substring(0, 100)}...`);
                 process.exit(1);
             }
         } else {
-            // Fallback: get from Firebase directly
             console.log(`[BOT ${BOT_ID}] Loading fbstate from Firebase...`);
             const bot = await botModel.getById(BOT_ID);
             if (!bot) {
@@ -101,33 +97,14 @@ async function loginBot() {
             }
         }
 
-        // ===== VALIDATE fbstate =====
-        if (!fbstate) {
-            console.error(`[BOT ${BOT_ID}] ❌ fbstate is null or undefined`);
-            process.exit(1);
-        }
-
-        if (!Array.isArray(fbstate)) {
-            console.error(`[BOT ${BOT_ID}] ❌ fbstate is not an array (type: ${typeof fbstate})`);
-            process.exit(1);
-        }
-
-        if (fbstate.length === 0) {
-            console.error(`[BOT ${BOT_ID}] ❌ fbstate array is empty`);
-            process.exit(1);
-        }
-
-        // Check if it has required keys
-        const hasRequiredKeys = fbstate.some(item => item.key === 'c_user' || item.key === 'xs');
-        if (!hasRequiredKeys) {
-            console.error(`[BOT ${BOT_ID}] ❌ fbstate missing required keys (c_user or xs)`);
-            console.error(`[BOT ${BOT_ID}] 📝 First few items: ${JSON.stringify(fbstate.slice(0, 3))}`);
+        if (!fbstate || !Array.isArray(fbstate) || fbstate.length === 0) {
+            console.error(`[BOT ${BOT_ID}] ❌ Invalid fbstate`);
             process.exit(1);
         }
 
         console.log(`[BOT ${BOT_ID}] ✅ fbstate validated (${fbstate.length} items)`);
-
         console.log(`[BOT ${BOT_ID}] Logging in...`);
+
         const api = await login({
             appState: fbstate,
             logLevel: 'error',
@@ -160,6 +137,9 @@ async function loginBot() {
         // ===== LOAD COMMANDS =====
         await loadCommands(api);
 
+        // ===== LOAD EVENTS =====
+        await loadEvents(api);
+
         // ===== START LISTENING =====
         await startListening(api);
 
@@ -174,28 +154,42 @@ async function loginBot() {
     }
 }
 
-// ===== LOAD COMMANDS =====
+// ================================================================
+// ===== LOAD COMMANDS (Fixed Paths) =====
+// ================================================================
+
 async function loadCommands(api) {
-    const commandsPath = path.join(__dirname, 'commands');
-    if (!fs.existsSync(commandsPath)) {
-        console.log(`[BOT ${BOT_ID}] No commands folder found`);
+    // Try multiple possible paths for commands
+    const possiblePaths = [
+        path.join(__dirname, 'scripts', 'cmds'),        // Your actual commands folder
+        path.join(__dirname, 'commands'),               // Alternative location
+        path.join(__dirname, 'bot', 'commands'),        // Alternative location
+        path.join(__dirname, 'cmds')                    // Alternative location
+    ];
+
+    let commandsPath = null;
+    for (const p of possiblePaths) {
+        if (fs.existsSync(p)) {
+            commandsPath = p;
+            console.log(`[BOT ${BOT_ID}] Found commands at: ${p}`);
+            break;
+        }
+    }
+
+    if (!commandsPath) {
+        console.log(`[BOT ${BOT_ID}] ❌ No commands folder found in any location`);
         return;
     }
 
-    const commandFolders = await readdir(commandsPath);
+    try {
+        const commandFiles = await readdir(commandsPath);
+        let loadedCount = 0;
 
-    for (const folder of commandFolders) {
-        const folderPath = path.join(commandsPath, folder);
-        const statInfo = await stat(folderPath);
-
-        if (!statInfo.isDirectory()) continue;
-
-        const commandFiles = await readdir(folderPath);
         for (const file of commandFiles) {
             if (!file.endsWith('.js')) continue;
 
             try {
-                const command = require(path.join(folderPath, file));
+                const command = require(path.join(commandsPath, file));
                 if (command.config && command.config.name) {
                     global.GoatBot.commands.set(command.config.name, command);
 
@@ -204,38 +198,70 @@ async function loadCommands(api) {
                             global.GoatBot.aliases.set(alias, command.config.name);
                         }
                     }
-                    console.log(`[BOT ${BOT_ID}] Loaded command: ${command.config.name}`);
+                    loadedCount++;
                 }
             } catch (err) {
                 console.error(`[BOT ${BOT_ID}] Failed to load command ${file}:`, err.message);
             }
         }
-    }
 
-    console.log(`[BOT ${BOT_ID}] Loaded ${global.GoatBot.commands.size} commands`);
+        console.log(`[BOT ${BOT_ID}] ✅ Loaded ${loadedCount} commands`);
+    } catch (err) {
+        console.error(`[BOT ${BOT_ID}] Failed to read commands folder:`, err.message);
+    }
 }
 
-// ===== START LISTENING =====
-async function startListening(api) {
-    // Load event handlers
-    const eventsPath = path.join(__dirname, 'events');
-    if (fs.existsSync(eventsPath)) {
+// ================================================================
+// ===== LOAD EVENTS =====
+// ================================================================
+
+async function loadEvents(api) {
+    const possiblePaths = [
+        path.join(__dirname, 'scripts', 'events'),
+        path.join(__dirname, 'events'),
+        path.join(__dirname, 'bot', 'events')
+    ];
+
+    let eventsPath = null;
+    for (const p of possiblePaths) {
+        if (fs.existsSync(p)) {
+            eventsPath = p;
+            console.log(`[BOT ${BOT_ID}] Found events at: ${p}`);
+            break;
+        }
+    }
+
+    if (!eventsPath) {
+        console.log(`[BOT ${BOT_ID}] No events folder found`);
+        return;
+    }
+
+    try {
         const eventFiles = await readdir(eventsPath);
+        let loadedCount = 0;
+
         for (const file of eventFiles) {
             if (!file.endsWith('.js')) continue;
+
             try {
                 const event = require(path.join(eventsPath, file));
                 if (event.config && event.config.name) {
                     global.GoatBot.eventCommands.set(event.config.name, event);
-                    console.log(`[BOT ${BOT_ID}] Loaded event: ${event.config.name}`);
+                    loadedCount++;
                 }
             } catch (err) {
                 console.error(`[BOT ${BOT_ID}] Failed to load event ${file}:`, err.message);
             }
         }
-    }
 
-    // Start listening to messages
+        console.log(`[BOT ${BOT_ID}] ✅ Loaded ${loadedCount} events`);
+    } catch (err) {
+        console.error(`[BOT ${BOT_ID}] Failed to read events folder:`, err.message);
+    }
+}
+
+// ===== START LISTENING =====
+async function startListening(api) {
     api.listenMqtt(async (err, event) => {
         if (err) {
             console.error(`[BOT ${BOT_ID}] MQTT Error:`, err.message);
@@ -251,6 +277,7 @@ async function startListening(api) {
 // ===== HANDLE EVENTS =====
 async function handleEvent(api, event) {
     try {
+        // Process event commands
         for (const [name, eventCmd] of global.GoatBot.eventCommands) {
             try {
                 if (eventCmd.onEvent) {
@@ -261,6 +288,7 @@ async function handleEvent(api, event) {
             }
         }
 
+        // Handle message commands
         if (event.type === 'message' && event.body) {
             const prefix = global.GoatBot.prefix;
             if (!event.body.startsWith(prefix)) return;
