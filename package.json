@@ -92,7 +92,7 @@
     "tinyurl": "^1.1.7",
     "totp-generator": "^1.0.0",
     "tough-cookie": "^4.1.2",
-    "undici": "^7.14.0",
+    "undici": "^5.28.4",
     "uuid": "^11.0.3",
     "websocket-stream": "^5.5.2",
     "ws": "^8.13.0",
