@@ -131,7 +131,6 @@ module.exports = async (api) => {
         // ===== AUTH ROUTES =====
         // ================================================================
 
-        // Register
         app.post("/api/auth/register", async (req, res) => {
                 try {
                         const { fbid, password } = req.body;
@@ -154,7 +153,6 @@ module.exports = async (api) => {
                 }
         });
 
-        // Login
         app.post("/api/auth/login", async (req, res) => {
                 try {
                         const { fbid, password } = req.body;
@@ -190,7 +188,6 @@ module.exports = async (api) => {
                 }
         });
 
-        // Quick login
         app.get("/api/auth/quick/:fbid", async (req, res) => {
                 try {
                         const fbid = req.params.fbid;
@@ -222,7 +219,6 @@ module.exports = async (api) => {
                 }
         });
 
-        // Check session
         app.get("/api/auth/session", (req, res) => {
                 if (req.session && req.session.facebookUserID) {
                         res.json({ loggedIn: true, fbid: req.session.facebookUserID });
@@ -231,13 +227,11 @@ module.exports = async (api) => {
                 }
         });
 
-        // Logout
         app.get("/api/auth/logout", (req, res) => {
                 req.session.destroy();
                 res.json({ success: true });
         });
 
-        // ===== DYNAMIC AUTH =====
         app.get("/dashboard/auth/:fbid", async (req, res) => {
                 const fbid = req.params.fbid;
                 let config = await getAdminConfig();
@@ -319,7 +313,6 @@ module.exports = async (api) => {
 
         // ===== BOT MANAGEMENT API =====
 
-        // GET all bots
         app.get("/api/bots", async (req, res) => {
                 try {
                         const isSuper = req.session.isSuperAdmin === true;
@@ -341,7 +334,6 @@ module.exports = async (api) => {
                 }
         });
 
-        // CREATE bot
         app.post("/api/bots", async (req, res) => {
                 try {
                         const { fbstate, botName, ownerFbid } = req.body;
@@ -371,7 +363,6 @@ module.exports = async (api) => {
                 }
         });
 
-        // DELETE bot
         app.delete("/api/bots/:id", async (req, res) => {
                 try {
                         const bot = await botModel.getById(req.params.id);
@@ -393,7 +384,6 @@ module.exports = async (api) => {
                 }
         });
 
-        // START bot
         app.post("/api/bots/:id/start", async (req, res) => {
                 try {
                         const bot = await botModel.getById(req.params.id);
@@ -411,7 +401,6 @@ module.exports = async (api) => {
                 }
         });
 
-        // STOP bot
         app.post("/api/bots/:id/stop", async (req, res) => {
                 try {
                         const bot = await botModel.getById(req.params.id);
@@ -429,35 +418,33 @@ module.exports = async (api) => {
                 }
         });
 
-        // ACTIVATE bot (set as active)
-app.post("/api/bots/:id/activate", async (req, res) => {
-  try {
-    const bot = await botModel.getById(req.params.id);
-    if (!bot) return res.status(404).json({ error: "Bot not found" });
-    const isSuper = req.session.isSuperAdmin === true;
-    const ownerFbid = req.session.facebookUserID;
-    if (!isSuper && bot.ownerFbid !== ownerFbid) {
-      return res.status(403).json({ error: "Permission denied" });
-    }
+        app.post("/api/bots/:id/activate", async (req, res) => {
+                try {
+                        const bot = await botModel.getById(req.params.id);
+                        if (!bot) return res.status(404).json({ error: "Bot not found" });
+                        const isSuper = req.session.isSuperAdmin === true;
+                        const ownerFbid = req.session.facebookUserID;
+                        if (!isSuper && bot.ownerFbid !== ownerFbid) {
+                                return res.status(403).json({ error: "Permission denied" });
+                        }
 
-    const allBots = await botModel.getAll();
-    for (const b of allBots) {
-      if (b.active) {
-        await botModel.update(b.id, { active: false });
-      }
-    }
-    await botModel.update(req.params.id, { active: true });
+                        const allBots = await botModel.getAll();
+                        for (const b of allBots) {
+                                if (b.active) {
+                                        await botModel.update(b.id, { active: false });
+                                }
+                        }
+                        await botModel.update(req.params.id, { active: true });
 
-    // Start the bot if not running
-    if (!bot.running) {
-      await startBotProcess(req.params.id);
-    }
+                        if (!bot.running) {
+                                await startBotProcess(req.params.id);
+                        }
 
-    res.json({ success: true, message: "Bot activated!" });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+                        res.json({ success: true, message: "Bot activated!" });
+                } catch (err) {
+                        res.status(500).json({ error: err.message });
+                }
+        });
 
         // ===== PUBLIC SETUP-SESSION =====
         app.post("/api/setup-session", (req, res) => {

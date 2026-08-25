@@ -1,5 +1,6 @@
 const { spawn } = require('child_process');
 const path = require('path');
+const fs = require('fs-extra');
 const { botModel } = require('./firebase.js');
 
 // Store running bot processes
@@ -14,17 +15,20 @@ async function startBotProcess(botId) {
       throw new Error('Bot is already running');
     }
 
+    console.log(`[BOT MANAGER] Starting bot ${botId} (${bot.botName})`);
+
     // Spawn child process with environment variables
     const env = {
       ...process.env,
       BOT_ID: botId,
       BOT_OWNER: bot.ownerFbid,
-      BOT_FBSTATE: JSON.stringify(bot.fbstate), // Pass fbstate directly
-      IS_CHILD_PROCESS: 'true'
+      BOT_FBSTATE: JSON.stringify(bot.fbstate),
+      IS_BOT_PROCESS: 'true',
+      // Prevent child from trying to start its own server
+      PORT: null
     };
 
-    console.log(`[BOT MANAGER] Starting bot ${botId} (${bot.botName})`);
-
+    // Use a separate entry point for bots
     const child = spawn('node', ['Goat.js'], {
       cwd: process.cwd(),
       env: env,
@@ -64,6 +68,7 @@ async function startBotProcess(botId) {
 
     return { success: true, message: 'Bot started', pid: child.pid };
   } catch (err) {
+    console.error(`[BOT MANAGER] Failed to start bot ${botId}:`, err);
     return { success: false, error: err.message };
   }
 }
