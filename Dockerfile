@@ -25,5 +25,5 @@ ENV NODE_OPTIONS="--max-old-space-size=512"
 # Expose the port your app listens on
 EXPOSE 5000
 
-# Start the bot
+# Start the dashboard (which will then spawn bots)
 CMD ["npm", "start"]
