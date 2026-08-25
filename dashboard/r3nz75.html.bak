@@ -33,9 +33,9 @@
     body { background: var(--bg); color: var(--txt); font-family: 'Inter', sans-serif; min-height: 100vh; overflow-x: hidden; }
     .bg { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
     .bg-blob { position: absolute; border-radius: 50%; filter: blur(120px); animation: blobMove 20s ease-in-out infinite alternate; }
-    .b1 { width: 70vw; height: 70vw; background: radial-gradient(circle, rgba(124,58,237,.22), transparent 65%); top: -20%; left: -25%; animation-duration: 22s; }
-    .b2 { width: 60vw; height: 60vw; background: radial-gradient(circle, rgba(6,182,212,.18), transparent 65%); bottom: -25%; right: -20%; animation-duration: 28s; }
-    .b3 { width: 50vw; height: 50vw; background: radial-gradient(circle, rgba(236,72,153,.14), transparent 65%); top: 35%; right: 5%; animation-duration: 18s; }
+    .b1 { width: 70vw; height: 70vw; background: radial-gradient(circle, rgba(124, 58, 237, .22), transparent 65%); top: -20%; left: -25%; animation-duration: 22s; }
+    .b2 { width: 60vw; height: 60vw; background: radial-gradient(circle, rgba(6, 182, 212, .18), transparent 65%); bottom: -25%; right: -20%; animation-duration: 28s; }
+    .b3 { width: 50vw; height: 50vw; background: radial-gradient(circle, rgba(236, 72, 153, .14), transparent 65%); top: 35%; right: 5%; animation-duration: 18s; }
     @keyframes blobMove { from { transform: translate(0,0) scale(1); } to { transform: translate(5%,8%) scale(1.12); } }
     .grid { position: fixed; inset: 0; z-index: 0; pointer-events: none; background-image: linear-gradient(rgba(124,58,237,.04) 1px, transparent 1px), linear-gradient(90deg, rgba(124,58,237,.04) 1px, transparent 1px); background-size: 64px 64px; mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, black 40%, transparent 100%); }
     #particles { position: fixed; inset: 0; z-index: 1; pointer-events: none; overflow: hidden; }
@@ -131,16 +131,11 @@
     .bot-item { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; padding: 14px 18px; background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.06); border-radius: 14px; margin-bottom: 10px; transition: .2s; }
     .bot-item:hover { border-color: var(--p); background: rgba(124,58,237,.06); }
     .bot-item.active { border-color: var(--g); background: rgba(16,185,129,.08); }
-    .bot-item.running { border-color: var(--c); background: rgba(6,182,212,.08); }
     .bot-info { display: flex; flex-direction: column; gap: 2px; }
     .bot-name { font-weight: 700; font-size: 15px; }
     .bot-meta { font-size: 12px; color: var(--muted); }
     .bot-actions { display: flex; gap: 8px; flex-wrap: wrap; }
     .btn-sm { padding: 6px 14px; font-size: 12px; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; transition: .2s; display: inline-flex; align-items: center; gap: 6px; }
-    .btn-sm.start { background: var(--c); color: #fff; }
-    .btn-sm.start:hover { background: #0891b2; transform: scale(1.03); }
-    .btn-sm.stop { background: var(--gold); color: #fff; }
-    .btn-sm.stop:hover { background: #d97706; transform: scale(1.03); }
     .btn-sm.activate { background: var(--g); color: #fff; }
     .btn-sm.activate:hover { background: #059669; transform: scale(1.03); }
     .btn-sm.delete { background: var(--r); color: #fff; }
@@ -156,13 +151,10 @@
     .create-bot-form textarea { min-height: 80px; }
     .bot-status-badge { font-size: 11px; padding: 2px 12px; border-radius: 100px; font-weight: 700; background: rgba(16,185,129,.15); color: var(--g); border: 1px solid rgba(16,185,129,.25); }
     .bot-status-badge.inactive { background: rgba(100,116,139,.15); color: var(--muted); border-color: rgba(100,116,139,.2); }
-    .bot-status-badge.running { background: rgba(6,182,212,.15); color: var(--c); border-color: rgba(6,182,212,.25); }
     #adminPanel { margin-top: 20px; border-top: 1px solid var(--border); padding-top: 20px; }
     #adminPanel h3 { font-size: 16px; font-weight: 800; margin-bottom: 12px; color: var(--p2); }
     #adminList div { display: flex; justify-content: space-between; padding: 8px 12px; border-bottom: 1px solid var(--border); font-size: 14px; }
     #adminList div span { font-family: 'JetBrains Mono', monospace; }
-    .logout-btn { color: var(--muted); text-decoration: none; font-size: 13px; padding: 6px 14px; border-radius: 8px; border: 1px solid var(--border); transition: .2s; background: transparent; cursor: pointer; }
-    .logout-btn:hover { border-color: var(--r); color: var(--r); background: rgba(239,68,68,.1); }
   </style>
 </head>
 <body>
@@ -179,12 +171,9 @@
     <!-- NAV -->
     <nav class="rv">
       <div class="nav-brand" id="brandName">RENZ MESSENGER BOT</div>
-      <div style="display:flex;align-items:center;gap:12px;">
-        <div id="navBadge">
-          <div class="nav-dot" id="navDot"></div>
-          <span id="navTxt">CONNECTING</span>
-        </div>
-        <button onclick="logoutUser()" class="logout-btn"><i class="fi fi-rr-sign-out-alt"></i> Logout</button>
+      <div id="navBadge">
+        <div class="nav-dot" id="navDot"></div>
+        <span id="navTxt">CONNECTING</span>
       </div>
     </nav>
 
@@ -225,14 +214,14 @@
       </div>
     </div>
 
-    <!-- ===== BOT MANAGEMENT CARD ===== -->
+    <!-- ===== BOT MANAGEMENT CARD (with Admin Panel) ===== -->
     <div class="sec-label rv"><i class="fi fi-rr-database"></i> Bot Management</div>
     <div class="session-card rv">
       <div class="sc-head">
         <div class="sc-head-icon"><i class="fi fi-rr-layer-group"></i></div>
         <div>
           <div class="sc-title">Your Bots</div>
-          <div class="sc-sub">Create, start, stop, or delete bots. Each bot runs independently.</div>
+          <div class="sc-sub">Create, activate, or delete bots. Only one bot can be active at a time.</div>
         </div>
       </div>
       <div class="sc-body">
@@ -369,19 +358,6 @@
       }
     }
 
-    // ===== LOGOUT =====
-    async function logoutUser() {
-      try {
-        const res = await fetch('/api/auth/logout');
-        const data = await res.json();
-        if (data.success) {
-          window.location.href = '/login';
-        }
-      } catch (e) {
-        window.location.href = '/login';
-      }
-    }
-
     // ===== LOAD STATS =====
     async function loadStats() {
       try {
@@ -478,24 +454,15 @@
         let html = '';
         bots.forEach(bot => {
           const activeClass = bot.active ? 'active' : '';
-          const runningClass = bot.running ? 'running' : '';
-          const statusBadge = bot.running 
-            ? '<span class="bot-status-badge running">▶ Running</span>' 
-            : bot.active 
-              ? '<span class="bot-status-badge">● Active</span>' 
-              : '<span class="bot-status-badge inactive">○ Inactive</span>';
+          const statusBadge = bot.active ? '<span class="bot-status-badge">● Active</span>' : '<span class="bot-status-badge inactive">○ Inactive</span>';
           html += `
-            <div class="bot-item ${activeClass} ${runningClass}">
+            <div class="bot-item ${activeClass}">
               <div class="bot-info">
                 <div class="bot-name">${escapeHtml(bot.botName || 'Unnamed Bot')} ${statusBadge}</div>
                 <div class="bot-meta">Owner: ${escapeHtml(bot.ownerFbid)} · ID: ${bot.id}</div>
               </div>
               <div class="bot-actions">
-                ${bot.running ? 
-                  `<button class="btn-sm stop" onclick="stopBot('${bot.id}')"><i class="fi fi-rr-stop"></i> Stop</button>` :
-                  `<button class="btn-sm start" onclick="startBot('${bot.id}')"><i class="fi fi-rr-play"></i> Start</button>`
-                }
-                ${!bot.active ? `<button class="btn-sm activate" onclick="activateBot('${bot.id}')"><i class="fi fi-rr-play"></i> Set Active</button>` : ''}
+                ${!bot.active ? `<button class="btn-sm activate" onclick="activateBot('${bot.id}')"><i class="fi fi-rr-play"></i> Activate</button>` : ''}
                 <button class="btn-sm delete" onclick="deleteBot('${bot.id}')"><i class="fi fi-rr-trash"></i> Delete</button>
               </div>
             </div>
@@ -505,12 +472,12 @@
       } catch (err) {
         list.innerHTML = `<p style="color:var(--r);">Error loading bots: ${escapeHtml(err.message)}</p>`;
         if (err.message.includes('Not authenticated')) {
-          list.innerHTML = `<p>Please <a href="/login" style="color:var(--p2)">login</a> first.</p>`;
+          list.innerHTML = `<p>Please <a href="/dashboard/auth/your_fbid" style="color:var(--p2)">login via your Facebook ID</a>.</p>`;
         }
       }
     }
 
-    // ===== CREATE BOT =====
+    // ===== CREATE BOT (Admin ID required) =====
     async function createBot() {
       const adminId = document.getElementById('newAdminId').value.trim();
       const name = document.getElementById('newBotName').value.trim();
@@ -558,43 +525,6 @@
       btn.innerHTML = '<i class="fi fi-rr-plus"></i> Create Bot';
     }
 
-    // ===== START BOT =====
-    async function startBot(id) {
-      const msg = document.getElementById('botMsg');
-      msg.style.display = 'none';
-      try {
-        const res = await fetch(`/api/bots/${id}/start`, { method: 'POST' });
-        const data = await res.json();
-        if (data.success) {
-          showBotMsg('ok', '✅ Bot started!');
-          loadBots();
-        } else {
-          showBotMsg('err', '❌ ' + data.error);
-        }
-      } catch (err) {
-        showBotMsg('err', '❌ Network error: ' + err.message);
-      }
-    }
-
-    // ===== STOP BOT =====
-    async function stopBot(id) {
-      const msg = document.getElementById('botMsg');
-      msg.style.display = 'none';
-      try {
-        const res = await fetch(`/api/bots/${id}/stop`, { method: 'POST' });
-        const data = await res.json();
-        if (data.success) {
-          showBotMsg('ok', '✅ Bot stopped!');
-          loadBots();
-        } else {
-          showBotMsg('err', '❌ ' + data.error);
-        }
-      } catch (err) {
-        showBotMsg('err', '❌ Network error: ' + err.message);
-      }
-    }
-
-    // ===== ACTIVATE BOT =====
     async function activateBot(id) {
       if (!confirm('Activating this bot will switch the active session and restart the service. Continue?')) return;
       const msg = document.getElementById('botMsg');
@@ -613,7 +543,6 @@
       }
     }
 
-    // ===== DELETE BOT =====
     async function deleteBot(id) {
       if (!confirm('Delete this bot permanently? This cannot be undone.')) return;
       const msg = document.getElementById('botMsg');
