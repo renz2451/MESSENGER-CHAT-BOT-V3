@@ -10,7 +10,6 @@
   <link rel="stylesheet" href="https://cdn-uicons.flaticon.com/2.6.0/uicons-regular-rounded/css/uicons-regular-rounded.css" />
   <link rel="stylesheet" href="https://cdn-uicons.flaticon.com/2.6.0/uicons-solid-rounded/css/uicons-solid-rounded.css" />
   <style>
-    /* ===== ALL YOUR ORIGINAL STYLES ===== */
     *,
     *::before,
     *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -128,7 +127,6 @@
     .rv.in { opacity: 1; transform: translateY(0); }
     @media(max-width:768px) { nav { padding: 10px 16px; margin-bottom:36px; top:10px; } .hero { padding:24px 0 48px; } .hero h1 { font-size: clamp(32px, 10vw, 52px); } .feat-grid { grid-template-columns:1fr; } .sc-body, .sc-head { padding:18px; } .stats-row { grid-template-columns:repeat(2,1fr); } .status-bar { gap:10px; } }
 
-    /* Bot Management extras */
     .bot-item { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; padding: 14px 18px; background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.06); border-radius: 14px; margin-bottom: 10px; transition: .2s; }
     .bot-item:hover { border-color: var(--p); background: rgba(124,58,237,.06); }
     .bot-item.active { border-color: var(--g); background: rgba(16,185,129,.08); }
@@ -159,7 +157,6 @@
     #adminList div { display: flex; justify-content: space-between; padding: 8px 12px; border-bottom: 1px solid var(--border); font-size: 14px; }
     #adminList div span { font-family: 'JetBrains Mono', monospace; }
 
-    /* === NEW: Login/Register overlay === */
     .login-container {
       max-width: 420px;
       margin: 60px auto;
@@ -218,9 +215,7 @@
       margin-top: 12px;
       display: none;
     }
-    .hidden {
-      display: none !important;
-    }
+    .hidden { display: none !important; }
   </style>
 </head>
 <body>
@@ -234,7 +229,6 @@
   <div id="stars"></div>
 
   <div class="wrap">
-    <!-- NAV -->
     <nav class="rv">
       <div class="nav-brand" id="brandName">RENZ MESSENGER BOT</div>
       <div id="navBadge">
@@ -243,7 +237,7 @@
       </div>
     </nav>
 
-    <!-- ===== LOGIN / REGISTER SECTION ===== -->
+    <!-- LOGIN / REGISTER -->
     <div id="loginSection" class="login-container rv">
       <h2>🔐 Login / Register</h2>
       <p>Enter your Facebook ID to access your bots</p>
@@ -252,9 +246,8 @@
       <div id="loginError" class="login-error">⚠️ Please enter a valid Facebook ID.</div>
     </div>
 
-    <!-- ===== DASHBOARD CONTENT (hidden until login) ===== -->
+    <!-- DASHBOARD (hidden until login) -->
     <div id="dashboardContent" class="hidden">
-      <!-- HERO -->
       <section class="hero rv">
         <div class="hero-avatar"><i class="fi fi-sr-robot"></i><div class="avatar-status" id="avatarStatus"></div></div>
         <h1 id="heroTitle">RENZ MESSENGER BOT</h1>
@@ -291,7 +284,7 @@
         </div>
       </div>
 
-      <!-- BOT MANAGEMENT CARD -->
+      <!-- BOT MANAGEMENT -->
       <div class="sec-label rv"><i class="fi fi-rr-database"></i> Bot Management</div>
       <div class="session-card rv">
         <div class="sc-head">
@@ -325,7 +318,7 @@
         </div>
       </div>
 
-      <!-- LIVE STATS -->
+      <!-- STATS -->
       <div class="sec-label rv"><i class="fi fi-rr-chart-line"></i> Live Stats</div>
       <div class="stats-row rv">
         <div class="stat-box"><span class="stat-ico"><i class="fi fi-rr-comment-dots"></i></span><div class="stat-val" id="sGroups"><span class="sk"></span></div><div class="stat-lbl">Groups</div></div>
@@ -334,7 +327,7 @@
         <div class="stat-box"><span class="stat-ico"><i class="fi fi-rr-clock"></i></span><div class="stat-val" id="sUp"><span class="sk"></span></div><div class="stat-lbl">Uptime</div></div>
       </div>
 
-      <!-- INFO BAR -->
+      <!-- SYSTEM INFO -->
       <div class="sec-label rv"><i class="fi fi-rr-info"></i> System Info</div>
       <div class="status-bar rv">
         <div class="sb-item"><span class="sb-key">Prefix</span><span class="sb-val" id="iPrefix"><span class="sk" style="min-width:16px"></span></span></div>
@@ -346,8 +339,6 @@
         <div class="sb-item"><span class="sb-key">Events</span><span class="sb-val" id="iEvt"><span class="sk" style="min-width:20px"></span></span></div>
         <div class="sb-item"><span class="sb-key">Status</span><span class="sb-val" id="iStatus"><span class="sk"></span></span></div>
       </div>
-
-      <!-- INFO PILLS -->
       <div class="info-grid rv">
         <div class="info-pill"><div class="pill-dot"></div><div><span class="pill-key">Prefix</span><span class="pill-val" id="pPrefix">—</span></div></div>
         <div class="info-pill"><div class="pill-dot" style="background:var(--c);box-shadow:0 0 8px var(--c)"></div><div><span class="pill-key">Bot Version</span><span class="pill-val" id="pVer">—</span></div></div>
@@ -368,7 +359,6 @@
         <div class="feat-card rv"><span class="feat-emo"><i class="fi fi-rr-engine"></i></span><h3>Custom FCA Engine</h3><p>Patched fca-r3nz75: stable MQTT listener, reconnect logic, full message parsing.</p></div>
       </div>
 
-      <!-- FOOTER -->
       <footer class="rv">
         <div>Made by <a href="https://github.com/ncazad" target="_blank">r3nz75</a> &nbsp;·&nbsp; Based on <a href="https://github.com/renz2451/MESSENGER-CHAT-BOT-V3" target="_blank">RENZ MESSENGER BOT</a></div>
         <div style="font-size:12px;color:#334155;margin-top:6px">© 2026 RENZ MESSENGER BOT — All rights reserved</div>
@@ -377,9 +367,7 @@
   </div>
 
   <script>
-    // ============================================================
     // ===== PARTICLES & STARS =====
-    // ============================================================
     (function() {
       const pc = document.getElementById('particles');
       const colors = ['#7c3aed', '#a855f7', '#06b6d4', '#ec4899', '#10b981', '#f59e0b', '#818cf8'];
@@ -400,9 +388,7 @@
       }
     })();
 
-    // ============================================================
     // ===== LOGIN / REGISTER =====
-    // ============================================================
     async function loginWithFBID() {
       const fbid = document.getElementById('fbidInput').value.trim();
       const errorEl = document.getElementById('loginError');
@@ -414,7 +400,6 @@
       window.location.href = `/dashboard/auth/${fbid}`;
     }
 
-    // Check if user is already logged in
     async function checkAuth() {
       try {
         const res = await fetch('/api/me');
@@ -423,29 +408,22 @@
           if (data.authenticated) {
             document.getElementById('loginSection').classList.add('hidden');
             document.getElementById('dashboardContent').classList.remove('hidden');
-            // Load dashboard content
             loadStats();
             loadBots();
             loadAdmins();
             checkAdminStatus();
           }
         }
-      } catch (e) {
-        // Not logged in – stay on login page
-      }
+      } catch (e) {}
     }
 
-    // ============================================================
-    // ===== REVEAL ON SCROLL =====
-    // ============================================================
+    // ===== REVEAL =====
     const rv = new IntersectionObserver(entries => {
       entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('in') });
     }, { threshold: .07, rootMargin: '0px 0px -30px 0px' });
     document.querySelectorAll('.rv').forEach(el => rv.observe(el));
 
-    // ============================================================
-    // ===== HELPERS (unchanged) =====
-    // ============================================================
+    // ===== HELPERS =====
     function fmtUp(s) {
       if (!s && s !== 0) return '—';
       const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
@@ -475,9 +453,6 @@
       }
     }
 
-    // ============================================================
-    // ===== LOAD STATS (unchanged) =====
-    // ============================================================
     async function loadStats() {
       try {
         const r = await fetch('/stats');
@@ -507,9 +482,6 @@
       }
     }
 
-    // ============================================================
-    // ===== SESSION SUBMIT (unchanged) =====
-    // ============================================================
     async function sendSession() {
       const key = document.getElementById('keyInp').value.trim();
       const state = document.getElementById('stateInp').value.trim();
@@ -556,9 +528,7 @@
       m.style.display = 'block';
     }
 
-    // ============================================================
     // ===== BOT MANAGEMENT =====
-    // ============================================================
     async function loadBots() {
       const list = document.getElementById('botList');
       try {
@@ -600,7 +570,6 @@
       const name = document.getElementById('newBotName').value.trim();
       const fbstate = document.getElementById('newBotFbstate').value.trim();
       const msg = document.getElementById('botMsg');
-
       if (!adminId) {
         showBotMsg('err', '⚠️ Admin ID is required.');
         return;
@@ -613,12 +582,10 @@
         showBotMsg('err', '⚠️ Invalid JSON format. Must be a valid fbstate array.');
         return;
       }
-
       const btn = document.getElementById('createBotBtn');
       btn.disabled = true;
       btn.innerHTML = '<i class="fi fi-rr-spinner fi-spin"></i> Creating...';
       msg.style.display = 'none';
-
       try {
         const res = await fetch('/api/bots', {
           method: 'POST',
@@ -704,9 +671,7 @@
       if (type === 'ok') { setTimeout(() => { msg.style.display = 'none'; }, 5000); }
     }
 
-    // ============================================================
     // ===== ADMIN MANAGEMENT =====
-    // ============================================================
     async function loadAdmins() {
       try {
         const res = await fetch('/api/admins');
@@ -769,21 +734,14 @@
       } catch (e) {}
     }
 
-    // ============================================================
-    // ===== HELPERS =====
-    // ============================================================
     function escapeHtml(text) {
       if (!text) return '';
       const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
       return text.replace(/[&<>"']/g, function(m) { return map[m]; });
     }
 
-    // ============================================================
     // ===== INIT =====
-    // ============================================================
     checkAuth();
-    // If user is already authenticated, the dashboard will load.
-    // If not, the login form is shown.
   </script>
 </body>
 </html>
