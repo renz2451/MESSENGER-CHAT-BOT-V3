@@ -154,5 +154,8 @@
   "private": true,
   "peerDependencies": {
     "typescript": "^5"
+  },
+  "overrides": {
+    "undici": "5.28.4"
   }
 }
