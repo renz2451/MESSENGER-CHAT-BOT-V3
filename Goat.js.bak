@@ -85,6 +85,50 @@ try {
 // ===== LOAD FIREBASE =====
 const { botModel } = require('./dashboard/firebase.js');
 
+// ===== DATABASE MODELS (with fallback) =====
+let usersData = null;
+let threadsData = null;
+
+async function loadDatabaseModels() {
+    try {
+        // Try to load from database/controller
+        const dbController = require('./database/controller/index.js');
+        const db = await dbController(null);
+        usersData = db.usersData;
+        threadsData = db.threadsData;
+        console.log(`[BOT ${BOT_ID}] ✅ Database models loaded from database/controller`);
+        return true;
+    } catch (err) {
+        console.warn(`[BOT ${BOT_ID}] Failed to load from database/controller:`, err.message);
+    }
+
+    try {
+        // Try to load from database/models
+        const usersModel = require('./database/models/users.js');
+        const threadsModel = require('./database/models/threads.js');
+        usersData = usersModel;
+        threadsData = threadsModel;
+        console.log(`[BOT ${BOT_ID}] ✅ Database models loaded from database/models`);
+        return true;
+    } catch (err) {
+        console.warn(`[BOT ${BOT_ID}] Failed to load from database/models:`, err.message);
+    }
+
+    // Fallback: create dummy models
+    console.warn(`[BOT ${BOT_ID}] ⚠️ Using fallback database models (no persistence)`);
+    usersData = {
+        get: async (id) => ({ money: 0, exp: 0, level: 1 }),
+        set: async (id, data) => data,
+        getAll: async () => []
+    };
+    threadsData = {
+        get: async (id) => ({ members: [], adminIDs: [] }),
+        set: async (id, data) => data,
+        getAll: async () => []
+    };
+    return true;
+}
+
 // ===== LOGIN FUNCTION =====
 async function loginBot() {
     try {
@@ -155,6 +199,9 @@ async function loginBot() {
 
         // Mark bot as running in Firebase
         await botModel.update(BOT_ID, { running: true });
+
+        // Load database models
+        await loadDatabaseModels();
 
         // ===== LOAD COMMANDS FROM SCRIPTS/CMDS =====
         await loadCommands(api);
@@ -371,15 +418,6 @@ async function handleEvent(api, event) {
             if (command) {
                 console.log(`[BOT ${BOT_ID}] 🎯 Executing command: ${commandName} from ${event.senderID}`);
                 try {
-                    // Get user data for context
-                    let userData = null;
-                    try {
-                        const usersData = require('./database/models/users.js');
-                        userData = await usersData.get(event.senderID);
-                    } catch (e) {
-                        // Ignore if usersData not available
-                    }
-
                     const context = {
                         api,
                         event,
@@ -392,8 +430,8 @@ async function handleEvent(api, event) {
                                 return api.setMessageReaction(emoji, event.messageID, event.threadID);
                             }
                         },
-                        usersData: require('./database/models/users.js'),
-                        threadsData: require('./database/models/threads.js'),
+                        usersData: usersData,
+                        threadsData: threadsData,
                         args,
                         commandName
                     };
@@ -424,7 +462,6 @@ async function handleEvent(api, event) {
 // ===== START BOT =====
 process.on('SIGTERM', () => {
     console.log(`[BOT ${BOT_ID}] Received SIGTERM, shutting down...`);
-    // Mark bot as not running
     botModel.update(BOT_ID, { running: false, pid: null }).catch(() => {});
     process.exit(0);
 });
