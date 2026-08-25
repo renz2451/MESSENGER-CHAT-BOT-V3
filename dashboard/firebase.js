@@ -9,14 +9,14 @@ try {
     if (!admin.apps.length) {
       admin.initializeApp({
         credential: admin.credential.cert(serviceAccount),
-        databaseURL: 'https://ddos-c147a-default-rtdb.firebaseio.com' // Replace with your project URL
+        databaseURL: 'https://ddos-c147a-default-rtdb.firebaseio.com' // Replace with your URL
       });
       firebaseInitialized = true;
       db = admin.database();
       console.log('[FIREBASE] ✅ Initialized successfully.');
     }
   } else {
-    console.warn('[FIREBASE] ⚠️ FIREBASE_SERVICE_ACCOUNT env var not set. Bot management will not work.');
+    console.warn('[FIREBASE] ⚠️ FIREBASE_SERVICE_ACCOUNT env var not set.');
   }
 } catch (err) {
   console.error('[FIREBASE] ❌ Initialization error:', err.message);
@@ -73,7 +73,6 @@ const setAdminConfig = async (data) => {
   await db.ref('adminConfig').update(data);
 };
 
-// ===== NEW: Get active bot fbstate =====
 const getActiveBotFbstate = async () => {
   if (!firebaseInitialized) return null;
   const snapshot = await db.ref('bots').once('value');
