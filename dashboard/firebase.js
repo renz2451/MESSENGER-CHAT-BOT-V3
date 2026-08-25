@@ -53,12 +53,20 @@ const botModel = {
   create: async (data) => {
     if (!firebaseInitialized) throw new Error('Firebase not initialized.');
     const ref = db.ref('bots').push();
+    
+    // ===== FIX: Ensure fbstate is stored as a string (JSON) =====
+    let fbstateToStore = data.fbstate;
+    if (typeof fbstateToStore === 'object') {
+      fbstateToStore = JSON.stringify(fbstateToStore);
+    }
+    
     await ref.set({ 
       ...data, 
+      fbstate: fbstateToStore,
       createdAt: Date.now(), 
       active: data.active || false,
       running: false,
-      pid: null // Process ID for the child process
+      pid: null
     });
     return { id: ref.key, ...data };
   },
@@ -91,6 +99,28 @@ const botModel = {
     if (!firebaseInitialized) throw new Error('Firebase not initialized.');
     await db.ref(`bots/${id}`).remove();
     return true;
+  },
+  // ===== NEW: Validate fbstate before storing =====
+  validateFbstate: (fbstate) => {
+    try {
+      let parsed = fbstate;
+      if (typeof parsed === 'string') {
+        parsed = JSON.parse(parsed);
+      }
+      if (!Array.isArray(parsed)) {
+        return { valid: false, error: 'fbstate must be an array' };
+      }
+      if (parsed.length === 0) {
+        return { valid: false, error: 'fbstate array is empty' };
+      }
+      const hasRequiredKeys = parsed.some(item => item.key === 'c_user' || item.key === 'xs');
+      if (!hasRequiredKeys) {
+        return { valid: false, error: 'fbstate missing required keys (c_user or xs)' };
+      }
+      return { valid: true, data: parsed };
+    } catch (e) {
+      return { valid: false, error: e.message };
+    }
   }
 };
 

@@ -64,31 +64,24 @@ try {
     };
 }
 
-const getText = (key, defaultText) => defaultText || key;
-
 // ================================================================
 // ===== DATABASE CONNECTION =====
 // ================================================================
 
-let db = null;
 let threadsData = null;
 let usersData = null;
-let dashBoardData = null;
 
 async function connectDatabase() {
     try {
         const dbModule = require("./connectDB.js");
         const result = await dbModule();
-        db = result;
         threadsData = result.threadsData;
         usersData = result.usersData;
-        dashBoardData = result.dashBoardData;
         console.log('[DASHBOARD] Database connected');
     } catch (err) {
         console.warn('[DASHBOARD] Database not available:', err.message);
         threadsData = { getAll: async () => [] };
         usersData = { getAll: async () => [] };
-        dashBoardData = { getAll: async () => [] };
     }
 }
 
@@ -378,11 +371,24 @@ app.get("/api/bots", async (req, res) => {
     }
 });
 
+// ===== CREATE BOT (with fbstate validation) =====
 app.post("/api/bots", async (req, res) => {
     try {
         const { fbstate, botName, ownerFbid } = req.body;
         if (!fbstate) return res.status(400).json({ error: "fbstate is required" });
         if (!ownerFbid) return res.status(400).json({ error: "Admin ID (ownerFbid) is required" });
+
+        // ===== FIX: Validate fbstate before saving =====
+        const validation = botModel.validateFbstate(fbstate);
+        if (!validation.valid) {
+            return res.status(400).json({ 
+                error: `Invalid fbstate: ${validation.error}`,
+                hint: "Make sure fbstate is a valid JSON array like [{'key':'c_user','value':'123'}]"
+            });
+        }
+
+        // Use the validated/parsed fbstate
+        const validatedFbstate = validation.data;
 
         const isSuper = req.session.isSuperAdmin === true;
         const sessionFbid = req.session.facebookUserID;
@@ -395,7 +401,7 @@ app.post("/api/bots", async (req, res) => {
 
         const bot = await botModel.create({
             ownerFbid,
-            fbstate,
+            fbstate: JSON.stringify(validatedFbstate), // Store as string JSON
             botName: botName || "My Bot",
             active: false,
             running: false,
@@ -490,8 +496,38 @@ app.post("/api/bots/:id/activate", async (req, res) => {
     }
 });
 
+// ===== PUBLIC SETUP-SESSION =====
+app.post("/api/setup-session", (req, res) => {
+    const { fbstate, adminKey } = req.body;
+    if (adminKey !== finalAdminKey) {
+        return res.json({ status: "error", message: "Wrong admin key." });
+    }
+    if (!fbstate || !fbstate.trim()) {
+        return res.json({ status: "error", message: "fbstate cannot be empty" });
+    }
+    
+    // Validate fbstate format
+    try {
+        const parsed = JSON.parse(fbstate);
+        if (!Array.isArray(parsed)) {
+            return res.json({ status: "error", message: "fbstate must be a JSON array" });
+        }
+    } catch (e) {
+        return res.json({ status: "error", message: "Invalid JSON format" });
+    }
+    
+    const accountFile = process.cwd() + "/account.txt";
+    try {
+        fs.writeFileSync(accountFile, fbstate.trim());
+        res.json({ status: "success", message: "Session saved! Bot is restarting now..." });
+        res.on("finish", () => setTimeout(() => process.exit(2), 500));
+    } catch (err) {
+        res.json({ status: "error", message: "Failed to write session: " + err.message });
+    }
+});
+
 // ================================================================
-// ===== ORIGINAL ROUTES (Preserved) =====
+// ===== ORIGINAL ROUTES =====
 // ================================================================
 
 app.get("/stats", async (req, res) => {

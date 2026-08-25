@@ -16,11 +16,28 @@ async function startBotProcess(botId) {
 
         console.log(`[BOT MANAGER] Starting bot ${botId} (${bot.botName})`);
 
+        // ===== FIX: Ensure fbstate is properly stringified =====
+        let fbstateString = bot.fbstate;
+        
+        // If fbstate is already a string, use it as-is
+        if (typeof fbstateString === 'string') {
+            // Verify it's valid JSON
+            try {
+                JSON.parse(fbstateString);
+            } catch (e) {
+                console.error(`[BOT MANAGER] Invalid fbstate JSON for bot ${botId}`);
+                throw new Error('Invalid fbstate format in database');
+            }
+        } else {
+            // If it's an object/array, stringify it
+            fbstateString = JSON.stringify(bot.fbstate);
+        }
+
         const env = {
             ...process.env,
             BOT_ID: botId,
             BOT_OWNER: bot.ownerFbid,
-            BOT_FBSTATE: JSON.stringify(bot.fbstate),
+            BOT_FBSTATE: fbstateString,
             IS_BOT_PROCESS: 'true'
         };
 
