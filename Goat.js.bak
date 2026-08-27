@@ -1,12 +1,12 @@
 /**
  * RENZ MESSENGER BOT V3 - Bot Process
+ * Fully working version – behaves like the original account.txt setup
  */
 
 const fs = require("fs-extra");
 const path = require("path");
 const { promisify } = require("util");
 const readdir = promisify(fs.readdir);
-const stat = promisify(fs.stat);
 
 // ===== CHECK IF THIS IS A BOT PROCESS =====
 if (!process.env.IS_BOT_PROCESS && !process.env.BOT_ID) {
@@ -29,16 +29,7 @@ try {
     console.log(`[BOT ${BOT_ID}] ✅ Config loaded`);
 } catch (err) {
     console.error(`[BOT ${BOT_ID}] ❌ Failed to load config:`, err.message);
-    config = { 
-        prefix: "$", 
-        language: "en", 
-        nameBot: "RENZ BOT",
-        adminBot: [],
-        developer: [],
-        vipuser: [],
-        premium: [],
-        creator: []
-    };
+    config = { prefix: "$", language: "en", nameBot: "RENZ BOT" };
 }
 
 // ===== SETUP GLOBAL =====
@@ -55,37 +46,18 @@ global.GoatBot = {
     startTime: Date.now()
 };
 
-// ===== INITIALIZE GLOBAL VARIABLES =====
+// ===== INITIALIZE GLOBAL VARIABLES (exactly like original) =====
 global.busyList = global.busyList || {};
 global.welcomeEvent = global.welcomeEvent || {};
 global.GoatBot.busyList = global.busyList;
 global.GoatBot.welcomeEvent = global.welcomeEvent;
 
-global.goat = global.goat || {
-    commands: new Map(),
-    events: new Map(),
-    aliases: new Map()
-};
-global.db = global.db || {
-    allThreadData: [],
-    allUserData: [],
-    globalData: []
-};
-global.client = global.client || {
-    database: {
-        creatingThreadData: [],
-        creatingUserData: [],
-        creatingDashBoardData: []
-    }
-};
-
 // ===== LOAD UTILITIES =====
 try {
     const utils = require("./utils.js");
     global.utils = utils;
-    console.log(`[BOT ${BOT_ID}] ✅ Utilities loaded`);
 } catch (err) {
-    console.warn(`[BOT ${BOT_ID}] ⚠️ utils.js not found, using fallback`);
+    console.warn(`[BOT ${BOT_ID}] utils.js not found, using fallback`);
     global.utils = {
         log: {
             info: console.log,
@@ -108,30 +80,30 @@ try {
 // ===== LOAD FIREBASE =====
 const { botModel } = require('./dashboard/firebase.js');
 
-// ===== DATABASE MODELS =====
+// ===== DATABASE MODELS (fully working, using api) =====
 let usersData = null;
 let threadsData = null;
+let dashBoardData = null;
 
-async function loadDatabaseModels() {
+// Load database models from the original database/controller
+async function loadDatabaseModels(api) {
     try {
         const dbController = require('./database/controller/index.js');
-        const db = await dbController(null);
+        const db = await dbController(api);
         usersData = db.usersData;
         threadsData = db.threadsData;
-        console.log(`[BOT ${BOT_ID}] ✅ Database models loaded`);
+        dashBoardData = db.dashBoardData;
+        console.log(`[BOT ${BOT_ID}] ✅ Database models loaded with api`);
         return true;
     } catch (err) {
-        console.warn(`[BOT ${BOT_ID}] ⚠️ Database models not available:`, err.message);
-        // Create fallback models that use the API
+        console.error(`[BOT ${BOT_ID}] ❌ Failed to load database models:`, err.message);
+        // Create fallback models that work with api
         usersData = {
             get: async (id) => {
                 try {
-                    if (global.GoatBot.fcaApi) {
-                        const info = await global.GoatBot.fcaApi.getUserInfo(id);
-                        return { money: 0, exp: 0, level: 1, name: info[id]?.name || 'User' };
-                    }
-                } catch (e) {}
-                return { money: 0, exp: 0, level: 1 };
+                    const info = await api.getUserInfo(id);
+                    return { money: 0, exp: 0, level: 1, name: info[id]?.name || 'User' };
+                } catch (e) { return { money: 0, exp: 0, level: 1 }; }
             },
             set: async (id, data) => data,
             getAll: async () => []
@@ -139,12 +111,9 @@ async function loadDatabaseModels() {
         threadsData = {
             get: async (id) => {
                 try {
-                    if (global.GoatBot.fcaApi) {
-                        const info = await global.GoatBot.fcaApi.getThreadInfo(id);
-                        return { members: info.participantIDs || [], adminIDs: info.adminIDs || [] };
-                    }
-                } catch (e) {}
-                return { members: [], adminIDs: [] };
+                    const info = await api.getThreadInfo(id);
+                    return { members: info.participantIDs || [], adminIDs: info.adminIDs || [] };
+                } catch (e) { return { members: [], adminIDs: [] }; }
             },
             set: async (id, data) => data,
             getAll: async () => []
@@ -160,6 +129,7 @@ async function loginBot() {
 
         let fbstate = null;
 
+        // Get fbstate from environment or Firebase
         if (BOT_FBSTATE) {
             try {
                 fbstate = JSON.parse(BOT_FBSTATE);
@@ -215,19 +185,12 @@ async function loginBot() {
             process.exit(1);
         }
 
-        // Store API in global
+        // Store API globally
         global.GoatBot.fcaApi = api;
 
-        let botID;
-        try {
-            botID = api.getCurrentUserID();
-            global.GoatBot.botID = botID;
-        } catch (err) {
-            console.error(`[BOT ${BOT_ID}] ❌ Failed to get user ID:`, err.message);
-            await botModel.update(BOT_ID, { running: false, pid: null });
-            process.exit(1);
-        }
-
+        // Get bot info
+        const botID = api.getCurrentUserID();
+        global.GoatBot.botID = botID;
         try {
             const botInfo = await api.getUserInfo(botID);
             if (botInfo && botInfo[botID]) {
@@ -240,10 +203,19 @@ async function loginBot() {
             console.log(`[BOT ${BOT_ID}] ✅ Logged in with ID: ${botID}`);
         }
 
+        // Mark bot as running
         await botModel.update(BOT_ID, { running: true });
-        await loadDatabaseModels();
-        await loadCommands(api);
-        await loadEvents(api);
+
+        // Load database models with api
+        await loadDatabaseModels(api);
+
+        // Load commands
+        await loadCommands();
+
+        // Load events
+        await loadEvents();
+
+        // Start listening
         await startListening(api);
 
         return api;
@@ -261,10 +233,9 @@ async function loginBot() {
     }
 }
 
-// ===== LOAD COMMANDS =====
-async function loadCommands(api) {
+// ===== LOAD COMMANDS (exactly like original) =====
+async function loadCommands() {
     const commandsPath = path.join(__dirname, 'scripts', 'cmds');
-    
     if (!fs.existsSync(commandsPath)) {
         console.log(`[BOT ${BOT_ID}] ❌ Commands folder not found`);
         return;
@@ -282,10 +253,8 @@ async function loadCommands(api) {
             try {
                 delete require.cache[require.resolve(filePath)];
                 const command = require(filePath);
-                
                 if (command.config && command.config.name) {
                     global.GoatBot.commands.set(command.config.name, command);
-                    
                     if (command.config.aliases && Array.isArray(command.config.aliases)) {
                         for (const alias of command.config.aliases) {
                             global.GoatBot.aliases.set(alias, command.config.name);
@@ -308,9 +277,8 @@ async function loadCommands(api) {
 }
 
 // ===== LOAD EVENTS =====
-async function loadEvents(api) {
+async function loadEvents() {
     const eventsPath = path.join(__dirname, 'scripts', 'events');
-    
     if (!fs.existsSync(eventsPath)) {
         console.log(`[BOT ${BOT_ID}] ❌ Events folder not found`);
         return;
@@ -319,15 +287,12 @@ async function loadEvents(api) {
     try {
         const files = await readdir(eventsPath);
         let loadedCount = 0;
-
         for (const file of files) {
             if (!file.endsWith('.js')) continue;
-
             const filePath = path.join(eventsPath, file);
             try {
                 delete require.cache[require.resolve(filePath)];
                 const event = require(filePath);
-                
                 if (event.config && event.config.name) {
                     global.GoatBot.eventCommands.set(event.config.name, event);
                     loadedCount++;
@@ -336,7 +301,6 @@ async function loadEvents(api) {
                 console.error(`[BOT ${BOT_ID}] ❌ Failed to load event ${file}:`, err.message);
             }
         }
-
         console.log(`[BOT ${BOT_ID}] ✅ Loaded ${loadedCount} events`);
     } catch (err) {
         console.error(`[BOT ${BOT_ID}] Failed to read events folder:`, err.message);
@@ -345,58 +309,34 @@ async function loadEvents(api) {
 
 // ===== START LISTENING =====
 async function startListening(api) {
-    if (!api) {
-        console.error(`[BOT ${BOT_ID}] ❌ Cannot start listening: api is null`);
+    if (!api || typeof api.listenMqtt !== 'function') {
+        console.error(`[BOT ${BOT_ID}] ❌ API not ready for listening`);
         return;
     }
 
-    if (typeof api.listenMqtt !== 'function') {
-        console.error(`[BOT ${BOT_ID}] ❌ API is not ready: listenMqtt is not a function`);
-        setTimeout(() => {
-            console.log(`[BOT ${BOT_ID}] 🔄 Retrying...`);
-            startListening(api);
-        }, 5000);
-        return;
-    }
+    console.log(`[BOT ${BOT_ID}] ✅ Listening for messages...`);
 
-    console.log(`[BOT ${BOT_ID}] ✅ API is ready, starting listener...`);
+    api.listenMqtt(async (err, event) => {
+        if (err) {
+            console.error(`[BOT ${BOT_ID}] ❌ MQTT Error:`, err.message);
+            return;
+        }
+        if (!event) return;
 
-    try {
-        api.listenMqtt(async (err, event) => {
-            if (err) {
-                console.error(`[BOT ${BOT_ID}] ❌ MQTT Error:`, err.message);
-                return;
-            }
+        // Log message
+        if (event.type === 'message') {
+            console.log(`[BOT ${BOT_ID}] 📩 Message from ${event.senderID}: ${event.body?.substring(0, 50) || '(no text)'}`);
+        }
 
-            if (!event) return;
-
-            if (event.type === 'message') {
-                console.log(`[BOT ${BOT_ID}] 📩 Message from ${event.senderID}: ${event.body?.substring(0, 50) || '(no text)'}`);
-            }
-
-            await handleEvent(api, event);
-        });
-
-        console.log(`[BOT ${BOT_ID}] ✅ Listening for messages...`);
-    } catch (err) {
-        console.error(`[BOT ${BOT_ID}] ❌ Failed to start listening:`, err.message);
-        setTimeout(() => {
-            console.log(`[BOT ${BOT_ID}] 🔄 Retrying start listening...`);
-            startListening(api);
-        }, 5000);
-    }
+        // Handle event – exactly as original
+        await handleEvent(api, event);
+    });
 }
 
-// ===== HANDLE EVENTS =====
+// ===== HANDLE EVENTS (mirrors original logic) =====
 async function handleEvent(api, event) {
-    // Validate API
-    if (!api) {
-        console.error(`[BOT ${BOT_ID}] ❌ Cannot handle event: api is null`);
-        return;
-    }
-
-    if (typeof api.sendMessage !== 'function') {
-        console.error(`[BOT ${BOT_ID}] ❌ API is not ready for handling events`);
+    if (!api || typeof api.sendMessage !== 'function') {
+        console.error(`[BOT ${BOT_ID}] ❌ API not ready`);
         return;
     }
 
@@ -412,10 +352,9 @@ async function handleEvent(api, event) {
             }
         }
 
-        // Handle message commands
-        if (event && event.type === 'message' && event.body) {
+        // Process message commands
+        if (event.type === 'message' && event.body) {
             const prefix = global.GoatBot.prefix;
-            
             if (!event.body.startsWith(prefix)) return;
 
             const args = event.body.slice(prefix.length).trim().split(/\s+/);
@@ -423,42 +362,32 @@ async function handleEvent(api, event) {
 
             let command = global.GoatBot.commands.get(commandName);
             if (!command) {
-                const aliasTarget = global.GoatBot.aliases.get(commandName);
-                if (aliasTarget) {
-                    command = global.GoatBot.commands.get(aliasTarget);
-                }
+                const alias = global.GoatBot.aliases.get(commandName);
+                if (alias) command = global.GoatBot.commands.get(alias);
             }
 
             if (command) {
                 console.log(`[BOT ${BOT_ID}] 🎯 Executing command: ${commandName}`);
                 try {
-                    // Create context with proper API reference
+                    // Create context exactly like original
                     const context = {
                         api: api,
                         event: event,
                         message: {
-                            reply: async (text, attachment = null) => {
-                                if (!api) {
-                                    console.error(`[BOT ${BOT_ID}] ❌ Cannot reply: api is null`);
-                                    return;
-                                }
+                            reply: async (text, attachment) => {
+                                if (!api) return;
                                 try {
-                                    if (typeof api.sendMessage !== 'function') {
-                                        console.error(`[BOT ${BOT_ID}] ❌ api.sendMessage is not a function`);
-                                        return;
-                                    }
                                     if (attachment) {
                                         return await api.sendMessage({ body: text, attachment: attachment }, event.threadID);
                                     }
                                     return await api.sendMessage(text, event.threadID);
                                 } catch (err) {
-                                    console.error(`[BOT ${BOT_ID}] ❌ Failed to send message:`, err.message);
+                                    console.error(`[BOT ${BOT_ID}] ❌ Failed to reply:`, err.message);
                                 }
                             },
                             react: async (emoji) => {
                                 if (!api) return;
                                 try {
-                                    if (typeof api.setMessageReaction !== 'function') return;
                                     return await api.setMessageReaction(emoji, event.messageID, event.threadID);
                                 } catch (err) {
                                     console.error(`[BOT ${BOT_ID}] ❌ Failed to react:`, err.message);
@@ -467,10 +396,9 @@ async function handleEvent(api, event) {
                         },
                         usersData: usersData,
                         threadsData: threadsData,
+                        dashBoardData: dashBoardData,
                         args: args,
-                        commandName: commandName,
-                        // Include global for commands that need it
-                        global: global
+                        commandName: commandName
                     };
 
                     await command.onStart(context);
@@ -478,9 +406,7 @@ async function handleEvent(api, event) {
                     console.error(`[BOT ${BOT_ID}] ❌ Command ${commandName} error:`, err.message);
                     console.error(err.stack);
                     try {
-                        if (api && event && event.threadID && typeof api.sendMessage === 'function') {
-                            await api.sendMessage(`⚠️ Error: ${err.message}`, event.threadID);
-                        }
+                        await api.sendMessage(`⚠️ Error: ${err.message}`, event.threadID);
                     } catch (e) {}
                 }
             }
@@ -491,7 +417,7 @@ async function handleEvent(api, event) {
     }
 }
 
-// ===== START BOT =====
+// ===== START =====
 process.on('SIGTERM', () => {
     console.log(`[BOT ${BOT_ID}] Received SIGTERM, shutting down...`);
     botModel.update(BOT_ID, { running: false, pid: null }).catch(() => {});
@@ -504,7 +430,7 @@ process.on('SIGINT', () => {
     process.exit(0);
 });
 
-process.on('unhandledRejection', (reason, promise) => {
+process.on('unhandledRejection', (reason) => {
     console.error(`[BOT ${BOT_ID}] Unhandled Rejection:`, reason);
 });
 
