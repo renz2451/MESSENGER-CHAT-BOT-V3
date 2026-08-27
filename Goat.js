@@ -201,19 +201,30 @@ async function loginBot() {
             process.exit(1);
         }
 
+        // ==== Store API in global ====
         global.GoatBot.fcaApi = api;
-        global.GoatBot.botID = api.getCurrentUserID();
+
+        // ==== Get user info safely ====
+        let botID;
+        try {
+            botID = api.getCurrentUserID();
+            global.GoatBot.botID = botID;
+        } catch (err) {
+            console.error(`[BOT ${BOT_ID}] ❌ Failed to get user ID:`, err.message);
+            await botModel.update(BOT_ID, { running: false, pid: null });
+            process.exit(1);
+        }
 
         try {
-            const botInfo = await api.getUserInfo(global.GoatBot.botID);
-            if (botInfo && botInfo[global.GoatBot.botID]) {
-                global.GoatBot.botName = botInfo[global.GoatBot.botID].name || config.nameBot || "RENZ BOT";
-                console.log(`[BOT ${BOT_ID}] ✅ Logged in as: ${global.GoatBot.botName} (${global.GoatBot.botID})`);
+            const botInfo = await api.getUserInfo(botID);
+            if (botInfo && botInfo[botID]) {
+                global.GoatBot.botName = botInfo[botID].name || config.nameBot || "RENZ BOT";
+                console.log(`[BOT ${BOT_ID}] ✅ Logged in as: ${global.GoatBot.botName} (${botID})`);
             } else {
-                console.log(`[BOT ${BOT_ID}] ✅ Logged in with ID: ${global.GoatBot.botID}`);
+                console.log(`[BOT ${BOT_ID}] ✅ Logged in with ID: ${botID}`);
             }
         } catch (err) {
-            console.log(`[BOT ${BOT_ID}] ✅ Logged in with ID: ${global.GoatBot.botID}`);
+            console.log(`[BOT ${BOT_ID}] ✅ Logged in with ID: ${botID}`);
         }
 
         // Mark bot as running
@@ -339,6 +350,19 @@ async function startListening(api) {
         return;
     }
 
+    // ==== Ensure API is ready before starting ====
+    // Check if api has the required methods
+    if (typeof api.listenMqtt !== 'function') {
+        console.error(`[BOT ${BOT_ID}] ❌ API is not ready: listenMqtt is not a function`);
+        setTimeout(() => {
+            console.log(`[BOT ${BOT_ID}] 🔄 Retrying...`);
+            startListening(api);
+        }, 5000);
+        return;
+    }
+
+    console.log(`[BOT ${BOT_ID}] ✅ API is ready, starting listener...`);
+
     try {
         api.listenMqtt(async (err, event) => {
             if (err) {
@@ -346,23 +370,38 @@ async function startListening(api) {
                 return;
             }
 
-            if (event && event.type === 'message') {
+            // Skip if event is invalid
+            if (!event) return;
+
+            if (event.type === 'message') {
                 console.log(`[BOT ${BOT_ID}] 📩 Message from ${event.senderID}: ${event.body?.substring(0, 50) || '(no text)'}`);
             }
 
+            // Handle event with safe API check
             await handleEvent(api, event);
         });
 
         console.log(`[BOT ${BOT_ID}] ✅ Listening for messages...`);
     } catch (err) {
         console.error(`[BOT ${BOT_ID}] ❌ Failed to start listening:`, err.message);
+        setTimeout(() => {
+            console.log(`[BOT ${BOT_ID}] 🔄 Retrying start listening...`);
+            startListening(api);
+        }, 5000);
     }
 }
 
 // ===== HANDLE EVENTS =====
 async function handleEvent(api, event) {
+    // ==== CRITICAL: Check if api is valid ====
     if (!api) {
         console.error(`[BOT ${BOT_ID}] ❌ Cannot handle event: api is null`);
+        return;
+    }
+
+    // Check if api has required methods
+    if (typeof api.sendMessage !== 'function') {
+        console.error(`[BOT ${BOT_ID}] ❌ API is not ready for handling events`);
         return;
     }
 
@@ -408,6 +447,10 @@ async function handleEvent(api, event) {
                                     return;
                                 }
                                 try {
+                                    if (typeof api.sendMessage !== 'function') {
+                                        console.error(`[BOT ${BOT_ID}] ❌ api.sendMessage is not a function`);
+                                        return;
+                                    }
                                     return await api.sendMessage(text, event.threadID);
                                 } catch (err) {
                                     console.error(`[BOT ${BOT_ID}] ❌ Failed to send message:`, err.message);
@@ -416,6 +459,7 @@ async function handleEvent(api, event) {
                             react: async (emoji) => {
                                 if (!api) return;
                                 try {
+                                    if (typeof api.setMessageReaction !== 'function') return;
                                     return await api.setMessageReaction(emoji, event.messageID, event.threadID);
                                 } catch (err) {
                                     console.error(`[BOT ${BOT_ID}] ❌ Failed to react:`, err.message);
@@ -433,7 +477,7 @@ async function handleEvent(api, event) {
                     console.error(`[BOT ${BOT_ID}] ❌ Command ${commandName} error:`, err.message);
                     console.error(err.stack);
                     try {
-                        if (api && event && event.threadID) {
+                        if (api && event && event.threadID && typeof api.sendMessage === 'function') {
                             await api.sendMessage(`⚠️ Error: ${err.message}`, event.threadID);
                         }
                     } catch (e) {}
