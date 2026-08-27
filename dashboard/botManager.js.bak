@@ -1,4 +1,5 @@
 const { spawn } = require('child_process');
+const fs = require('fs-extra');
 const path = require('path');
 const { botModel } = require('./firebase.js');
 
@@ -14,16 +15,18 @@ async function startBotProcess(botId) {
       throw new Error('Bot is already running');
     }
 
-    // Spawn child process with environment variables
+    // Write fbstate to a unique file for this bot
+    const botFile = path.join(process.cwd(), `account_${botId}.txt`);
+    fs.writeFileSync(botFile, bot.fbstate);
+
+    // Spawn child process with environment variable pointing to this bot's file
     const env = {
       ...process.env,
+      BOT_ACCOUNT_FILE: botFile,
       BOT_ID: botId,
       BOT_OWNER: bot.ownerFbid,
-      BOT_FBSTATE: JSON.stringify(bot.fbstate), // Pass fbstate directly
-      IS_CHILD_PROCESS: 'true'
+      BOT_FBSTATE: bot.fbstate
     };
-
-    console.log(`[BOT MANAGER] Starting bot ${botId} (${bot.botName})`);
 
     const child = spawn('node', ['Goat.js'], {
       cwd: process.cwd(),
@@ -56,7 +59,6 @@ async function startBotProcess(botId) {
     child.on('error', (err) => {
       console.error(`[BOT ${botId}] Error:`, err);
       botProcesses.delete(botId);
-      botModel.update(botId, { running: false, pid: null });
     });
 
     botProcesses.set(botId, child);
@@ -81,12 +83,15 @@ async function stopBotProcess(botId) {
       throw new Error('Bot is not running');
     }
 
+    // Send SIGTERM first, then SIGKILL after 5 seconds if not exited
     child.kill('SIGTERM');
     
+    // Wait for process to exit
     const exitPromise = new Promise((resolve) => {
       child.once('close', resolve);
     });
     
+    // Force kill after 5 seconds if not exited
     const timeoutPromise = new Promise((resolve) => {
       setTimeout(() => {
         if (!child.killed) {

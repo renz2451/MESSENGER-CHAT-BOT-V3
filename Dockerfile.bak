@@ -19,7 +19,7 @@ RUN npm install --production
 # Copy the rest of the app
 COPY . .
 
-# Set environment variable for Node memory
+# Set environment variable for Node memory (optional)
 ENV NODE_OPTIONS="--max-old-space-size=512"
 
 # Expose the port your app listens on

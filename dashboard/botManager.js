@@ -32,6 +32,7 @@ async function startBotProcess(botId) {
       detached: false
     });
 
+    // Log output with bot ID prefix
     child.stdout.on('data', (data) => {
       const lines = data.toString().split('\n').filter(line => line.trim());
       for (const line of lines) {
