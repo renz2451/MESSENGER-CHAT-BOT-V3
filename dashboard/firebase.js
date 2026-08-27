@@ -2,44 +2,27 @@ const admin = require('firebase-admin');
 
 let firebaseInitialized = false;
 let db = null;
-let initializationError = null;
 
-// ===== INITIALIZE FIREBASE =====
 try {
   if (process.env.FIREBASE_SERVICE_ACCOUNT) {
     const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-    
     if (!admin.apps.length) {
       admin.initializeApp({
         credential: admin.credential.cert(serviceAccount),
-        databaseURL: `https://${serviceAccount.project_id}-default-rtdb.firebaseio.com`
+        databaseURL: 'https://ddos-c147a-default-rtdb.firebaseio.com'
       });
       firebaseInitialized = true;
       db = admin.database();
       console.log('[FIREBASE] ✅ Initialized successfully.');
-    } else {
-      firebaseInitialized = true;
-      db = admin.database();
-      console.log('[FIREBASE] ✅ Already initialized.');
     }
   } else {
     console.warn('[FIREBASE] ⚠️ FIREBASE_SERVICE_ACCOUNT env var not set.');
-    initializationError = 'FIREBASE_SERVICE_ACCOUNT environment variable not set';
   }
 } catch (err) {
   console.error('[FIREBASE] ❌ Initialization error:', err.message);
-  initializationError = err.message;
 }
 
-// ===== SAFE ACCESS HELPER =====
-function checkFirebase() {
-  if (!firebaseInitialized) {
-    throw new Error(`Firebase not initialized: ${initializationError || 'Unknown error'}`);
-  }
-  return db;
-}
-
-// ===== USER MODEL =====
+// ---- User Model ----
 const userModel = {
   create: async (fbid, password) => {
     if (!firebaseInitialized) throw new Error('Firebase not initialized.');
@@ -65,20 +48,13 @@ const userModel = {
   }
 };
 
-// ===== BOT MODEL =====
+// ---- Bot Model ----
 const botModel = {
   create: async (data) => {
     if (!firebaseInitialized) throw new Error('Firebase not initialized.');
     const ref = db.ref('bots').push();
-    
-    let fbstateToStore = data.fbstate;
-    if (typeof fbstateToStore === 'object') {
-      fbstateToStore = JSON.stringify(fbstateToStore);
-    }
-    
     await ref.set({ 
       ...data, 
-      fbstate: fbstateToStore,
       createdAt: Date.now(), 
       active: data.active || false,
       running: false,
@@ -115,31 +91,10 @@ const botModel = {
     if (!firebaseInitialized) throw new Error('Firebase not initialized.');
     await db.ref(`bots/${id}`).remove();
     return true;
-  },
-  validateFbstate: (fbstate) => {
-    try {
-      let parsed = fbstate;
-      if (typeof parsed === 'string') {
-        parsed = JSON.parse(parsed);
-      }
-      if (!Array.isArray(parsed)) {
-        return { valid: false, error: 'fbstate must be an array' };
-      }
-      if (parsed.length === 0) {
-        return { valid: false, error: 'fbstate array is empty' };
-      }
-      const hasRequiredKeys = parsed.some(item => item.key === 'c_user' || item.key === 'xs');
-      if (!hasRequiredKeys) {
-        return { valid: false, error: 'fbstate missing required keys (c_user or xs)' };
-      }
-      return { valid: true, data: parsed };
-    } catch (e) {
-      return { valid: false, error: e.message };
-    }
   }
 };
 
-// ===== ADMIN CONFIG =====
+// ---- Admin config ----
 const getAdminConfig = async () => {
   if (!firebaseInitialized) {
     return { adminKey: null, trustedAdminIDs: [] };
@@ -157,11 +112,4 @@ const setAdminConfig = async (data) => {
   await db.ref('adminConfig').update(data);
 };
 
-module.exports = { 
-  botModel, 
-  userModel, 
-  getAdminConfig, 
-  setAdminConfig,
-  firebaseInitialized,
-  checkFirebase
-};
+module.exports = { botModel, userModel, getAdminConfig, setAdminConfig };

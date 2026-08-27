@@ -42,5 +42,6 @@ module.exports = async function () {
         usersData,
         dashBoardData,
         globalData
+        // botModel is now handled by Firebase
     };
 };
