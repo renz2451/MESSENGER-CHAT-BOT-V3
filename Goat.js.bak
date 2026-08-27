@@ -56,6 +56,30 @@ global.GoatBot = {
     startTime: Date.now()
 };
 
+// ===== INITIALIZE GLOBAL VARIABLES FOR COMMANDS =====
+global.busyList = global.busyList || {};
+global.welcomeEvent = global.welcomeEvent || {};
+global.GoatBot.busyList = global.busyList;
+global.GoatBot.welcomeEvent = global.welcomeEvent;
+
+global.goat = global.goat || {
+    commands: new Map(),
+    events: new Map(),
+    aliases: new Map()
+};
+global.db = global.db || {
+    allThreadData: [],
+    allUserData: [],
+    globalData: []
+};
+global.client = global.client || {
+    database: {
+        creatingThreadData: [],
+        creatingUserData: [],
+        creatingDashBoardData: []
+    }
+};
+
 // ===== LOAD UTILITIES =====
 try {
     const utils = require("./utils.js");
@@ -91,7 +115,6 @@ let threadsData = null;
 
 async function loadDatabaseModels() {
     try {
-        // Try to load from database/controller
         const dbController = require('./database/controller/index.js');
         const db = await dbController(null);
         usersData = db.usersData;
@@ -103,7 +126,6 @@ async function loadDatabaseModels() {
     }
 
     try {
-        // Try to load from database/models
         const usersModel = require('./database/models/users.js');
         const threadsModel = require('./database/models/threads.js');
         usersData = usersModel;
@@ -114,7 +136,6 @@ async function loadDatabaseModels() {
         console.warn(`[BOT ${BOT_ID}] Failed to load from database/models:`, err.message);
     }
 
-    // Fallback: create dummy models
     console.warn(`[BOT ${BOT_ID}] ⚠️ Using fallback database models (no persistence)`);
     usersData = {
         get: async (id) => ({ money: 0, exp: 0, level: 1 }),
@@ -197,19 +218,10 @@ async function loginBot() {
             console.log(`[BOT ${BOT_ID}] ✅ Logged in with ID: ${global.GoatBot.botID}`);
         }
 
-        // Mark bot as running in Firebase
         await botModel.update(BOT_ID, { running: true });
-
-        // Load database models
         await loadDatabaseModels();
-
-        // ===== LOAD COMMANDS FROM SCRIPTS/CMDS =====
         await loadCommands(api);
-
-        // ===== LOAD EVENTS FROM SCRIPTS/EVENTS =====
         await loadEvents(api);
-
-        // ===== START LISTENING =====
         await startListening(api);
 
         return api;
@@ -229,29 +241,23 @@ async function loginBot() {
 // ================================================================
 
 async function loadCommands(api) {
-    // Try the correct path based on your repository structure
     const commandsPath = path.join(__dirname, 'scripts', 'cmds');
     
     if (!fs.existsSync(commandsPath)) {
         console.log(`[BOT ${BOT_ID}] ❌ Commands folder not found at: ${commandsPath}`);
-        // Try alternative locations
         const altPaths = [
             path.join(__dirname, 'commands'),
             path.join(__dirname, 'cmds'),
             path.join(__dirname, 'bot', 'commands')
         ];
-        let found = false;
         for (const alt of altPaths) {
             if (fs.existsSync(alt)) {
                 console.log(`[BOT ${BOT_ID}] Found commands at alternative location: ${alt}`);
                 await loadCommandsFromPath(api, alt);
-                found = true;
-                break;
+                return;
             }
         }
-        if (!found) {
-            console.log(`[BOT ${BOT_ID}] ❌ No commands folder found`);
-        }
+        console.log(`[BOT ${BOT_ID}] ❌ No commands folder found`);
         return;
     }
 
@@ -269,15 +275,12 @@ async function loadCommandsFromPath(api, commandsPath) {
 
             const filePath = path.join(commandsPath, file);
             try {
-                // Clear require cache to load fresh
                 delete require.cache[require.resolve(filePath)];
                 const command = require(filePath);
                 
                 if (command.config && command.config.name) {
-                    // Store command
                     global.GoatBot.commands.set(command.config.name, command);
                     
-                    // Store aliases
                     if (command.config.aliases && Array.isArray(command.config.aliases)) {
                         for (const alias of command.config.aliases) {
                             global.GoatBot.aliases.set(alias, command.config.name);
@@ -296,7 +299,6 @@ async function loadCommandsFromPath(api, commandsPath) {
 
         console.log(`[BOT ${BOT_ID}] ✅ Loaded ${loadedCount} commands (${failedCount} failed)`);
         
-        // Log command names for debugging
         if (loadedCount > 0) {
             const names = Array.from(global.GoatBot.commands.keys()).slice(0, 10);
             console.log(`[BOT ${BOT_ID}] 📝 Commands: ${names.join(', ')}${global.GoatBot.commands.size > 10 ? '...' : ''}`);
@@ -315,7 +317,6 @@ async function loadEvents(api) {
     
     if (!fs.existsSync(eventsPath)) {
         console.log(`[BOT ${BOT_ID}] ❌ Events folder not found at: ${eventsPath}`);
-        // Try alternative locations
         const altPaths = [
             path.join(__dirname, 'events'),
             path.join(__dirname, 'bot', 'events')
@@ -369,7 +370,6 @@ async function startListening(api) {
             return;
         }
 
-        // Log incoming messages for debugging
         if (event.type === 'message') {
             console.log(`[BOT ${BOT_ID}] 📩 Message from ${event.senderID}: ${event.body?.substring(0, 50) || '(no text)'}`);
         }
@@ -383,7 +383,6 @@ async function startListening(api) {
 // ===== HANDLE EVENTS =====
 async function handleEvent(api, event) {
     try {
-        // Process event commands first
         for (const [name, eventCmd] of global.GoatBot.eventCommands) {
             try {
                 if (eventCmd.onEvent) {
@@ -394,21 +393,16 @@ async function handleEvent(api, event) {
             }
         }
 
-        // Handle message commands
         if (event.type === 'message' && event.body) {
             const prefix = global.GoatBot.prefix;
             
-            // Check if message starts with prefix
             if (!event.body.startsWith(prefix)) return;
 
-            // Parse command
             const args = event.body.slice(prefix.length).trim().split(/\s+/);
             const commandName = args.shift().toLowerCase();
 
-            // Find command
             let command = global.GoatBot.commands.get(commandName);
             if (!command) {
-                // Check aliases
                 const aliasTarget = global.GoatBot.aliases.get(commandName);
                 if (aliasTarget) {
                     command = global.GoatBot.commands.get(aliasTarget);
@@ -442,12 +436,9 @@ async function handleEvent(api, event) {
                     console.error(err.stack);
                     try {
                         api.sendMessage(`⚠️ Error: ${err.message}`, event.threadID);
-                    } catch (e) {
-                        // Ignore send error
-                    }
+                    } catch (e) {}
                 }
             } else {
-                // Command not found - only log if it's a valid prefix command
                 if (event.body.startsWith(prefix)) {
                     console.log(`[BOT ${BOT_ID}] ❓ Unknown command: ${commandName}`);
                 }
@@ -472,13 +463,11 @@ process.on('SIGINT', () => {
     process.exit(0);
 });
 
-// ===== Unhandled rejection handler =====
 process.on('unhandledRejection', (reason, promise) => {
     console.error(`[BOT ${BOT_ID}] Unhandled Rejection at:`, promise);
     console.error(`[BOT ${BOT_ID}] Reason:`, reason);
 });
 
-// ===== Start the bot =====
 console.log(`[BOT ${BOT_ID}] 🚀 Initializing...`);
 loginBot().catch(err => {
     console.error(`[BOT ${BOT_ID}] 💀 Fatal error:`, err);

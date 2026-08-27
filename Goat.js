@@ -1,6 +1,5 @@
 /**
  * RENZ MESSENGER BOT V3 - Bot Process
- * This file runs as a child process for each bot
  */
 
 const fs = require("fs-extra");
@@ -19,8 +18,8 @@ const BOT_ID = process.env.BOT_ID;
 const BOT_OWNER = process.env.BOT_OWNER;
 const BOT_FBSTATE = process.env.BOT_FBSTATE;
 
-console.log(`[BOT ${BOT_ID}] Starting bot process...`);
-console.log(`[BOT ${BOT_ID}] Owner: ${BOT_OWNER}`);
+console.log(`[BOT ${BOT_ID}] 🚀 Starting bot process...`);
+console.log(`[BOT ${BOT_ID}] 👤 Owner: ${BOT_OWNER}`);
 
 // ===== LOAD CONFIG =====
 const configPath = path.join(__dirname, process.env.NODE_ENV === 'development' ? 'config.dev.json' : 'config.json');
@@ -29,7 +28,7 @@ try {
     config = require(configPath);
     console.log(`[BOT ${BOT_ID}] ✅ Config loaded`);
 } catch (err) {
-    console.error(`[BOT ${BOT_ID}] Failed to load config:`, err.message);
+    console.error(`[BOT ${BOT_ID}] ❌ Failed to load config:`, err.message);
     config = { 
         prefix: "$", 
         language: "en", 
@@ -56,7 +55,7 @@ global.GoatBot = {
     startTime: Date.now()
 };
 
-// ===== INITIALIZE GLOBAL VARIABLES FOR COMMANDS =====
+// ===== INITIALIZE GLOBAL VARIABLES =====
 global.busyList = global.busyList || {};
 global.welcomeEvent = global.welcomeEvent || {};
 global.GoatBot.busyList = global.busyList;
@@ -86,7 +85,7 @@ try {
     global.utils = utils;
     console.log(`[BOT ${BOT_ID}] ✅ Utilities loaded`);
 } catch (err) {
-    console.warn(`[BOT ${BOT_ID}] utils.js not found, using fallback`);
+    console.warn(`[BOT ${BOT_ID}] ⚠️ utils.js not found, using fallback`);
     global.utils = {
         log: {
             info: console.log,
@@ -109,7 +108,7 @@ try {
 // ===== LOAD FIREBASE =====
 const { botModel } = require('./dashboard/firebase.js');
 
-// ===== DATABASE MODELS (with fallback) =====
+// ===== DATABASE MODELS =====
 let usersData = null;
 let threadsData = null;
 
@@ -119,35 +118,22 @@ async function loadDatabaseModels() {
         const db = await dbController(null);
         usersData = db.usersData;
         threadsData = db.threadsData;
-        console.log(`[BOT ${BOT_ID}] ✅ Database models loaded from database/controller`);
+        console.log(`[BOT ${BOT_ID}] ✅ Database models loaded`);
         return true;
     } catch (err) {
-        console.warn(`[BOT ${BOT_ID}] Failed to load from database/controller:`, err.message);
-    }
-
-    try {
-        const usersModel = require('./database/models/users.js');
-        const threadsModel = require('./database/models/threads.js');
-        usersData = usersModel;
-        threadsData = threadsModel;
-        console.log(`[BOT ${BOT_ID}] ✅ Database models loaded from database/models`);
+        console.warn(`[BOT ${BOT_ID}] ⚠️ Database models not available:`, err.message);
+        usersData = {
+            get: async (id) => ({ money: 0, exp: 0, level: 1 }),
+            set: async (id, data) => data,
+            getAll: async () => []
+        };
+        threadsData = {
+            get: async (id) => ({ members: [], adminIDs: [] }),
+            set: async (id, data) => data,
+            getAll: async () => []
+        };
         return true;
-    } catch (err) {
-        console.warn(`[BOT ${BOT_ID}] Failed to load from database/models:`, err.message);
     }
-
-    console.warn(`[BOT ${BOT_ID}] ⚠️ Using fallback database models (no persistence)`);
-    usersData = {
-        get: async (id) => ({ money: 0, exp: 0, level: 1 }),
-        set: async (id, data) => data,
-        getAll: async () => []
-    };
-    threadsData = {
-        get: async (id) => ({ members: [], adminIDs: [] }),
-        set: async (id, data) => data,
-        getAll: async () => []
-    };
-    return true;
 }
 
 // ===== LOGIN FUNCTION =====
@@ -157,40 +143,46 @@ async function loginBot() {
 
         let fbstate = null;
 
+        // Get fbstate from environment
         if (BOT_FBSTATE) {
             try {
                 fbstate = JSON.parse(BOT_FBSTATE);
                 console.log(`[BOT ${BOT_ID}] ✅ Loaded fbstate from environment`);
             } catch (parseError) {
-                console.error(`[BOT ${BOT_ID}] ❌ Failed to parse fbstate JSON:`, parseError.message);
-                process.exit(1);
+                console.error(`[BOT ${BOT_ID}] ❌ Failed to parse fbstate:`, parseError.message);
+                // Try to get from Firebase directly
+                const bot = await botModel.getById(BOT_ID);
+                if (bot && bot.fbstate) {
+                    try {
+                        fbstate = JSON.parse(bot.fbstate);
+                        console.log(`[BOT ${BOT_ID}] ✅ Loaded fbstate from Firebase`);
+                    } catch (e) {
+                        console.error(`[BOT ${BOT_ID}] ❌ Invalid fbstate in Firebase`);
+                    }
+                }
             }
         } else {
             console.log(`[BOT ${BOT_ID}] Loading fbstate from Firebase...`);
             const bot = await botModel.getById(BOT_ID);
-            if (!bot) {
-                console.error(`[BOT ${BOT_ID}] ❌ Bot not found in Firebase`);
-                process.exit(1);
-            }
-            fbstate = bot.fbstate;
-            if (typeof fbstate === 'string') {
+            if (bot && bot.fbstate) {
                 try {
-                    fbstate = JSON.parse(fbstate);
-                    console.log(`[BOT ${BOT_ID}] ✅ Parsed fbstate from Firebase`);
+                    fbstate = JSON.parse(bot.fbstate);
+                    console.log(`[BOT ${BOT_ID}] ✅ Loaded fbstate from Firebase`);
                 } catch (e) {
-                    console.error(`[BOT ${BOT_ID}] ❌ Invalid fbstate format in Firebase`);
-                    process.exit(1);
+                    console.error(`[BOT ${BOT_ID}] ❌ Invalid fbstate in Firebase`);
                 }
             }
         }
 
         if (!fbstate || !Array.isArray(fbstate) || fbstate.length === 0) {
-            console.error(`[BOT ${BOT_ID}] ❌ Invalid fbstate`);
+            console.error(`[BOT ${BOT_ID}] ❌ No valid fbstate found`);
+            // Mark bot as failed in Firebase
+            await botModel.update(BOT_ID, { running: false, pid: null });
             process.exit(1);
         }
 
         console.log(`[BOT ${BOT_ID}] ✅ fbstate validated (${fbstate.length} items)`);
-        console.log(`[BOT ${BOT_ID}] Logging in...`);
+        console.log(`[BOT ${BOT_ID}] 🔑 Logging in to Facebook...`);
 
         const api = await login({
             appState: fbstate,
@@ -202,6 +194,12 @@ async function loginBot() {
             autoMarkDelivery: true,
             autoReconnect: true
         });
+
+        if (!api) {
+            console.error(`[BOT ${BOT_ID}] ❌ Login returned null`);
+            await botModel.update(BOT_ID, { running: false, pid: null });
+            process.exit(1);
+        }
 
         global.GoatBot.fcaApi = api;
         global.GoatBot.botID = api.getCurrentUserID();
@@ -218,10 +216,19 @@ async function loginBot() {
             console.log(`[BOT ${BOT_ID}] ✅ Logged in with ID: ${global.GoatBot.botID}`);
         }
 
+        // Mark bot as running
         await botModel.update(BOT_ID, { running: true });
+
+        // Load database models
         await loadDatabaseModels();
+
+        // Load commands
         await loadCommands(api);
+
+        // Load events
         await loadEvents(api);
+
+        // Start listening
         await startListening(api);
 
         return api;
@@ -229,42 +236,29 @@ async function loginBot() {
     } catch (err) {
         console.error(`[BOT ${BOT_ID}] ❌ Login failed:`, err.message);
         console.error(err.stack);
+        
+        // Mark bot as failed
+        try {
+            await botModel.update(BOT_ID, { running: false, pid: null });
+        } catch (e) {}
+
+        // Retry after 10 seconds
         setTimeout(() => {
-            console.log(`[BOT ${BOT_ID}] Retrying login...`);
+            console.log(`[BOT ${BOT_ID}] 🔄 Retrying login...`);
             loginBot();
-        }, 5000);
+        }, 10000);
     }
 }
 
-// ================================================================
 // ===== LOAD COMMANDS =====
-// ================================================================
-
 async function loadCommands(api) {
     const commandsPath = path.join(__dirname, 'scripts', 'cmds');
     
     if (!fs.existsSync(commandsPath)) {
-        console.log(`[BOT ${BOT_ID}] ❌ Commands folder not found at: ${commandsPath}`);
-        const altPaths = [
-            path.join(__dirname, 'commands'),
-            path.join(__dirname, 'cmds'),
-            path.join(__dirname, 'bot', 'commands')
-        ];
-        for (const alt of altPaths) {
-            if (fs.existsSync(alt)) {
-                console.log(`[BOT ${BOT_ID}] Found commands at alternative location: ${alt}`);
-                await loadCommandsFromPath(api, alt);
-                return;
-            }
-        }
-        console.log(`[BOT ${BOT_ID}] ❌ No commands folder found`);
+        console.log(`[BOT ${BOT_ID}] ❌ Commands folder not found`);
         return;
     }
 
-    await loadCommandsFromPath(api, commandsPath);
-}
-
-async function loadCommandsFromPath(api, commandsPath) {
     try {
         const files = await readdir(commandsPath);
         let loadedCount = 0;
@@ -288,53 +282,29 @@ async function loadCommandsFromPath(api, commandsPath) {
                     }
                     loadedCount++;
                 } else {
-                    console.warn(`[BOT ${BOT_ID}] ⚠️ Command ${file} missing config.name`);
                     failedCount++;
                 }
             } catch (err) {
-                console.error(`[BOT ${BOT_ID}] ❌ Failed to load command ${file}:`, err.message);
+                console.error(`[BOT ${BOT_ID}] ❌ Failed to load ${file}:`, err.message);
                 failedCount++;
             }
         }
 
         console.log(`[BOT ${BOT_ID}] ✅ Loaded ${loadedCount} commands (${failedCount} failed)`);
-        
-        if (loadedCount > 0) {
-            const names = Array.from(global.GoatBot.commands.keys()).slice(0, 10);
-            console.log(`[BOT ${BOT_ID}] 📝 Commands: ${names.join(', ')}${global.GoatBot.commands.size > 10 ? '...' : ''}`);
-        }
     } catch (err) {
         console.error(`[BOT ${BOT_ID}] Failed to read commands folder:`, err.message);
     }
 }
 
-// ================================================================
 // ===== LOAD EVENTS =====
-// ================================================================
-
 async function loadEvents(api) {
     const eventsPath = path.join(__dirname, 'scripts', 'events');
     
     if (!fs.existsSync(eventsPath)) {
-        console.log(`[BOT ${BOT_ID}] ❌ Events folder not found at: ${eventsPath}`);
-        const altPaths = [
-            path.join(__dirname, 'events'),
-            path.join(__dirname, 'bot', 'events')
-        ];
-        for (const alt of altPaths) {
-            if (fs.existsSync(alt)) {
-                console.log(`[BOT ${BOT_ID}] Found events at alternative location: ${alt}`);
-                await loadEventsFromPath(api, alt);
-                return;
-            }
-        }
+        console.log(`[BOT ${BOT_ID}] ❌ Events folder not found`);
         return;
     }
 
-    await loadEventsFromPath(api, eventsPath);
-}
-
-async function loadEventsFromPath(api, eventsPath) {
     try {
         const files = await readdir(eventsPath);
         let loadedCount = 0;
@@ -352,7 +322,7 @@ async function loadEventsFromPath(api, eventsPath) {
                     loadedCount++;
                 }
             } catch (err) {
-                console.error(`[BOT ${BOT_ID}] Failed to load event ${file}:`, err.message);
+                console.error(`[BOT ${BOT_ID}] ❌ Failed to load event ${file}:`, err.message);
             }
         }
 
@@ -364,36 +334,52 @@ async function loadEventsFromPath(api, eventsPath) {
 
 // ===== START LISTENING =====
 async function startListening(api) {
-    api.listenMqtt(async (err, event) => {
-        if (err) {
-            console.error(`[BOT ${BOT_ID}] MQTT Error:`, err.message);
-            return;
-        }
+    if (!api) {
+        console.error(`[BOT ${BOT_ID}] ❌ Cannot start listening: api is null`);
+        return;
+    }
 
-        if (event.type === 'message') {
-            console.log(`[BOT ${BOT_ID}] 📩 Message from ${event.senderID}: ${event.body?.substring(0, 50) || '(no text)'}`);
-        }
+    try {
+        api.listenMqtt(async (err, event) => {
+            if (err) {
+                console.error(`[BOT ${BOT_ID}] ❌ MQTT Error:`, err.message);
+                return;
+            }
 
-        await handleEvent(api, event);
-    });
+            if (event && event.type === 'message') {
+                console.log(`[BOT ${BOT_ID}] 📩 Message from ${event.senderID}: ${event.body?.substring(0, 50) || '(no text)'}`);
+            }
 
-    console.log(`[BOT ${BOT_ID}] ✅ Listening for messages...`);
+            await handleEvent(api, event);
+        });
+
+        console.log(`[BOT ${BOT_ID}] ✅ Listening for messages...`);
+    } catch (err) {
+        console.error(`[BOT ${BOT_ID}] ❌ Failed to start listening:`, err.message);
+    }
 }
 
 // ===== HANDLE EVENTS =====
 async function handleEvent(api, event) {
+    if (!api) {
+        console.error(`[BOT ${BOT_ID}] ❌ Cannot handle event: api is null`);
+        return;
+    }
+
     try {
+        // Process event commands
         for (const [name, eventCmd] of global.GoatBot.eventCommands) {
             try {
                 if (eventCmd.onEvent) {
                     await eventCmd.onEvent({ api, event, ...eventCmd.config });
                 }
             } catch (err) {
-                console.error(`[BOT ${BOT_ID}] Event command ${name} error:`, err.message);
+                console.error(`[BOT ${BOT_ID}] ❌ Event ${name} error:`, err.message);
             }
         }
 
-        if (event.type === 'message' && event.body) {
+        // Handle message commands
+        if (event && event.type === 'message' && event.body) {
             const prefix = global.GoatBot.prefix;
             
             if (!event.body.startsWith(prefix)) return;
@@ -410,24 +396,36 @@ async function handleEvent(api, event) {
             }
 
             if (command) {
-                console.log(`[BOT ${BOT_ID}] 🎯 Executing command: ${commandName} from ${event.senderID}`);
+                console.log(`[BOT ${BOT_ID}] 🎯 Executing command: ${commandName}`);
                 try {
                     const context = {
-                        api,
-                        event,
+                        api: api,
+                        event: event,
                         message: {
                             reply: async (text) => {
-                                console.log(`[BOT ${BOT_ID}] 💬 Replying to ${event.senderID}: ${text?.substring(0, 50) || ''}`);
-                                return api.sendMessage(text, event.threadID);
+                                if (!api) {
+                                    console.error(`[BOT ${BOT_ID}] ❌ Cannot reply: api is null`);
+                                    return;
+                                }
+                                try {
+                                    return await api.sendMessage(text, event.threadID);
+                                } catch (err) {
+                                    console.error(`[BOT ${BOT_ID}] ❌ Failed to send message:`, err.message);
+                                }
                             },
                             react: async (emoji) => {
-                                return api.setMessageReaction(emoji, event.messageID, event.threadID);
+                                if (!api) return;
+                                try {
+                                    return await api.setMessageReaction(emoji, event.messageID, event.threadID);
+                                } catch (err) {
+                                    console.error(`[BOT ${BOT_ID}] ❌ Failed to react:`, err.message);
+                                }
                             }
                         },
                         usersData: usersData,
                         threadsData: threadsData,
-                        args,
-                        commandName
+                        args: args,
+                        commandName: commandName
                     };
 
                     await command.onStart(context);
@@ -435,17 +433,15 @@ async function handleEvent(api, event) {
                     console.error(`[BOT ${BOT_ID}] ❌ Command ${commandName} error:`, err.message);
                     console.error(err.stack);
                     try {
-                        api.sendMessage(`⚠️ Error: ${err.message}`, event.threadID);
+                        if (api && event && event.threadID) {
+                            await api.sendMessage(`⚠️ Error: ${err.message}`, event.threadID);
+                        }
                     } catch (e) {}
-                }
-            } else {
-                if (event.body.startsWith(prefix)) {
-                    console.log(`[BOT ${BOT_ID}] ❓ Unknown command: ${commandName}`);
                 }
             }
         }
     } catch (err) {
-        console.error(`[BOT ${BOT_ID}] Event handler error:`, err.message);
+        console.error(`[BOT ${BOT_ID}] ❌ Event handler error:`, err.message);
         console.error(err.stack);
     }
 }
@@ -464,8 +460,7 @@ process.on('SIGINT', () => {
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-    console.error(`[BOT ${BOT_ID}] Unhandled Rejection at:`, promise);
-    console.error(`[BOT ${BOT_ID}] Reason:`, reason);
+    console.error(`[BOT ${BOT_ID}] Unhandled Rejection:`, reason);
 });
 
 console.log(`[BOT ${BOT_ID}] 🚀 Initializing...`);
