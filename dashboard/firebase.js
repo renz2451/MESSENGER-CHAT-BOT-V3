@@ -58,7 +58,7 @@ const botModel = {
       createdAt: Date.now(), 
       active: data.active || false,
       running: false,
-      pid: null // Process ID for the child process
+      pid: null
     });
     return { id: ref.key, ...data };
   },
