@@ -38,7 +38,7 @@ global.utils = utils;
 global.log = utils.log;
 
 // ===== LOAD FIREBASE =====
-const { botModel, userModel } = require('./dashboard/firebase.js');
+const { botModel } = require('./dashboard/firebase.js');
 
 // ===== BOT ID FROM ENVIRONMENT =====
 const BOT_ID = process.env.BOT_ID || null;
