@@ -1,6 +1,6 @@
 /**
  * RENZ MESSENGER BOT V3
- * Main entry – starts the dashboard server
+ * Main entry – starts the dashboard
  */
 
 console.log('[MAIN] Starting RENZ MESSENGER BOT V3...');
