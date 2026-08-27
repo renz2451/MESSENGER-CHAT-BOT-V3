@@ -14,12 +14,19 @@ async function startBotProcess(botId) {
       throw new Error('Bot is already running');
     }
 
+    // ===== FIX: Do not double‑stringify =====
+    // If bot.fbstate is already a string (JSON), use it directly.
+    // Otherwise, stringify it.
+    const fbstate = typeof bot.fbstate === 'string'
+      ? bot.fbstate
+      : JSON.stringify(bot.fbstate);
+
     // Spawn child process with environment variables
     const env = {
       ...process.env,
       BOT_ID: botId,
       BOT_OWNER: bot.ownerFbid,
-      BOT_FBSTATE: JSON.stringify(bot.fbstate), // Pass fbstate directly
+      BOT_FBSTATE: fbstate,          // <-- Pass the string directly
       IS_CHILD_PROCESS: 'true'
     };
 
@@ -32,7 +39,6 @@ async function startBotProcess(botId) {
       detached: false
     });
 
-    // Log output with bot ID prefix
     child.stdout.on('data', (data) => {
       const lines = data.toString().split('\n').filter(line => line.trim());
       for (const line of lines) {

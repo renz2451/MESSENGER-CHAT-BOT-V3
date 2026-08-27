@@ -14,12 +14,18 @@ async function startBotProcess(botId) {
       throw new Error('Bot is already running');
     }
 
-    // Spawn child process with environment variables
+    // ===== FIX: Do not double‑stringify =====
+    // If bot.fbstate is already a string (JSON), use it directly.
+    // Otherwise, stringify it.
+    const fbstate = typeof bot.fbstate === 'string'
+      ? bot.fbstate
+      : JSON.stringify(bot.fbstate);
+
     const env = {
       ...process.env,
       BOT_ID: botId,
       BOT_OWNER: bot.ownerFbid,
-      BOT_FBSTATE: JSON.stringify(bot.fbstate), // Pass fbstate directly
+      BOT_FBSTATE: fbstate,          // <-- Pass the string directly
       IS_CHILD_PROCESS: 'true'
     };
 

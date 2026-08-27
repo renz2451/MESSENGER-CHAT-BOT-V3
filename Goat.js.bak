@@ -1,7 +1,8 @@
 /**
  * @author R3nz75
- * RENZ MESSENGER BOT V3 - Bot Entry
- * Works exactly like original, but fbstate comes from Firebase when run as a child process.
+ * RENZ MESSENGER BOT V3 - Bot Process
+ * This file is a copy of the original login.js, but uses Firebase for fbstate.
+ * It runs as a child process for each bot.
  */
 
 const fs = require("fs-extra");
@@ -11,11 +12,27 @@ const readdir = promisify(fs.readdir);
 const readFile = promisify(fs.readFile);
 const stat = promisify(fs.stat);
 
+// ===== CHECK IF CHILD PROCESS =====
+const IS_CHILD_PROCESS = process.env.IS_CHILD_PROCESS === 'true' && process.env.BOT_ID;
+const BOT_ID = process.env.BOT_ID || null;
+const BOT_OWNER = process.env.BOT_OWNER || null;
+const BOT_FBSTATE = process.env.BOT_FBSTATE || null;
+
+if (!IS_CHILD_PROCESS) {
+  console.log('[BOT] Running as main process (dashboard only). Waiting for bot starts.');
+  setInterval(() => {}, 60000); // Keep alive
+  process.exit(0); // Actually we don't want to exit, just keep alive
+  // Let's just keep the process alive without exiting.
+  // Use a simple interval.
+}
+
+console.log(`[BOT] Starting bot ${BOT_ID} (owner: ${BOT_OWNER})`);
+
 // ===== LOAD CONFIG =====
 const configPath = path.join(__dirname, process.env.NODE_ENV === 'development' ? 'config.dev.json' : 'config.json');
 const config = require(configPath);
 
-// ===== SETUP GLOBAL =====
+// ===== SETUP GLOBAL (exactly as original) =====
 global.GoatBot = {
   config: config,
   configCommands: require(path.join(__dirname, process.env.NODE_ENV === 'development' ? 'configCommands.dev.json' : 'configCommands.json')),
@@ -35,64 +52,52 @@ const utils = require("./utils.js");
 global.utils = utils;
 global.log = utils.log;
 
-// ===== LOAD FIREBASE =====
+// ===== LOAD FIREBASE HELPER =====
 const { botModel } = require('./dashboard/firebase.js');
 
-// ===== BOT ID FROM ENVIRONMENT =====
-const BOT_ID = process.env.BOT_ID || null;
-const BOT_OWNER = process.env.BOT_OWNER || null;
-const BOT_FBSTATE = process.env.BOT_FBSTATE || null;
-const IS_CHILD_PROCESS = !!process.env.BOT_ID;
-
-console.log(`[BOT] Starting bot${BOT_ID ? ` ${BOT_ID}` : ''} (${IS_CHILD_PROCESS ? 'child process' : 'main process'})`);
-
-// ===== LOGIN FUNCTION =====
-async function loginBot() {
-  try {
-    const { login } = require("fcanew-r3nz75");
-    
-    let fbstate = null;
-
-    // If child process, get fbstate from environment or Firebase
-    if (IS_CHILD_PROCESS && BOT_ID) {
-      console.log(`[BOT] Loading fbstate for bot ${BOT_ID}`);
-      // First try environment variable (from botManager)
-      if (BOT_FBSTATE) {
-        try {
-          fbstate = JSON.parse(BOT_FBSTATE);
-          console.log(`[BOT] Loaded fbstate from environment`);
-        } catch (e) {
-          console.error(`[BOT] Failed to parse BOT_FBSTATE:`, e.message);
-        }
-      }
-      // If not, fetch from Firebase directly
-      if (!fbstate) {
-        const bot = await botModel.getById(BOT_ID);
-        if (bot && bot.fbstate) {
-          try {
-            fbstate = JSON.parse(bot.fbstate);
-            console.log(`[BOT] Loaded fbstate from Firebase`);
-          } catch (e) {
-            console.error(`[BOT] Invalid fbstate in Firebase`);
-          }
-        }
-      }
-    } else {
-      // Main process – not logging in as a bot
-      console.log('[BOT] Main process – dashboard only');
-      return null;
+// ===== GET FBSTATE =====
+async function getFbstate() {
+  let fbstate = null;
+  // 1. Try environment variable (from botManager)
+  if (BOT_FBSTATE) {
+    try {
+      fbstate = JSON.parse(BOT_FBSTATE);
+      console.log(`[BOT] Loaded fbstate from environment`);
+      return fbstate;
+    } catch (e) {
+      console.warn(`[BOT] Failed to parse BOT_FBSTATE:`, e.message);
     }
+  }
+  // 2. Try Firebase
+  if (BOT_ID) {
+    const bot = await botModel.getById(BOT_ID);
+    if (bot && bot.fbstate) {
+      try {
+        fbstate = JSON.parse(bot.fbstate);
+        console.log(`[BOT] Loaded fbstate from Firebase`);
+        return fbstate;
+      } catch (e) {
+        console.error(`[BOT] Invalid fbstate in Firebase`);
+      }
+    }
+  }
+  return null;
+}
 
+// ===== START BOT (copied from original login.js) =====
+async function startBot() {
+  try {
+    const fbstate = await getFbstate();
     if (!fbstate || !Array.isArray(fbstate) || fbstate.length === 0) {
       console.error('[BOT] No valid fbstate found');
       process.exit(1);
     }
 
     console.log(`[BOT] ✅ fbstate validated (${fbstate.length} items)`);
-
-    // ===== ORIGINAL LOGIN CODE (unchanged) =====
     console.log('[BOT] Logging in...');
-    const api = await login({ 
+
+    const { login } = require("fcanew-r3nz75");
+    const api = await login({
       appState: fbstate,
       logLevel: 'error',
       forceLogin: true,
@@ -130,34 +135,31 @@ async function loginBot() {
     // ===== LOAD DATABASE (exactly like original loadData.js) =====
     console.log('[BOT] Loading database...');
     const dbController = require('./database/controller/index.js');
-    const db = await dbController(api);
+    const db = await dbController(api);  // passes api to controller
     global.db = db;
     const { threadsData, usersData, dashBoardData, globalData } = db;
 
     // ===== LOAD COMMANDS (original logic) =====
     await loadCommands(api, threadsData, usersData, dashBoardData, globalData);
 
+    // ===== LOAD EVENTS (original logic) =====
+    await loadEvents(api, threadsData, usersData, dashBoardData, globalData);
+
     // ===== START LISTENING (original logic) =====
     await startListening(api, threadsData, usersData, dashBoardData, globalData);
-
-    return api;
 
   } catch (err) {
     console.error('[BOT] ❌ Login failed:', err.message);
     console.error(err.stack);
-    if (!IS_CHILD_PROCESS) {
-      console.log('[BOT] Main process continuing without bot login...');
-      return null;
-    }
-    // Retry after delay
+    // Retry after 10 seconds
     setTimeout(() => {
       console.log('[BOT] 🔄 Retrying login...');
-      loginBot();
+      startBot();
     }, 10000);
   }
 }
 
-// ===== LOAD COMMANDS (original) =====
+// ===== LOAD COMMANDS =====
 async function loadCommands(api, threadsData, usersData, dashBoardData, globalData) {
   const commandsPath = path.join(__dirname, 'scripts', 'cmds');
   if (!fs.existsSync(commandsPath)) {
@@ -193,27 +195,32 @@ async function loadCommands(api, threadsData, usersData, dashBoardData, globalDa
   console.log(`[BOT] Loaded ${global.GoatBot.commands.size} commands`);
 }
 
-// ===== START LISTENING (original) =====
-async function startListening(api, threadsData, usersData, dashBoardData, globalData) {
-  // Load events
+// ===== LOAD EVENTS =====
+async function loadEvents(api, threadsData, usersData, dashBoardData, globalData) {
   const eventsPath = path.join(__dirname, 'scripts', 'events');
-  if (fs.existsSync(eventsPath)) {
-    const eventFiles = await readdir(eventsPath);
-    for (const file of eventFiles) {
-      if (!file.endsWith('.js')) continue;
-      try {
-        const event = require(path.join(eventsPath, file));
-        if (event.config && event.config.name) {
-          global.GoatBot.eventCommands.set(event.config.name, event);
-          console.log(`[BOT] Loaded event: ${event.config.name}`);
-        }
-      } catch (err) {
-        console.error(`[BOT] Failed to load event ${file}:`, err.message);
-      }
-    }
+  if (!fs.existsSync(eventsPath)) {
+    console.log('[BOT] No events folder found');
+    return;
   }
 
-  // Start MQTT listener
+  const eventFiles = await readdir(eventsPath);
+  for (const file of eventFiles) {
+    if (!file.endsWith('.js')) continue;
+    try {
+      const event = require(path.join(eventsPath, file));
+      if (event.config && event.config.name) {
+        global.GoatBot.eventCommands.set(event.config.name, event);
+        console.log(`[BOT] Loaded event: ${event.config.name}`);
+      }
+    } catch (err) {
+      console.error(`[BOT] Failed to load event ${file}:`, err.message);
+    }
+  }
+  console.log(`[BOT] Loaded ${global.GoatBot.eventCommands.size} events`);
+}
+
+// ===== START LISTENING =====
+async function startListening(api, threadsData, usersData, dashBoardData, globalData) {
   api.listenMqtt(async (err, event) => {
     if (err) {
       console.error('[BOT] MQTT Error:', err.message);
@@ -221,11 +228,10 @@ async function startListening(api, threadsData, usersData, dashBoardData, global
     }
     await handleEvent(api, event, threadsData, usersData, dashBoardData, globalData);
   });
-
   console.log('[BOT] ✅ Listening for messages...');
 }
 
-// ===== HANDLE EVENTS (original) =====
+// ===== HANDLE EVENTS =====
 async function handleEvent(api, event, threadsData, usersData, dashBoardData, globalData) {
   try {
     // Process event commands
@@ -282,7 +288,7 @@ async function handleEvent(api, event, threadsData, usersData, dashBoardData, gl
   }
 }
 
-// ===== START BOT =====
+// ===== START =====
 console.log('[BOT] Starting RENZ MESSENGER BOT V3...');
 console.log(`[BOT] Using Node.js ${process.version}`);
 
@@ -298,15 +304,7 @@ process.on('SIGINT', () => {
   process.exit(0);
 });
 
-// If child process, start the bot; otherwise keep alive for dashboard
-if (IS_CHILD_PROCESS && BOT_ID) {
-  console.log(`[BOT] Starting as bot ${BOT_ID} (owner: ${BOT_OWNER})`);
-  loginBot().catch(err => {
-    console.error('[BOT] Fatal error:', err);
-    process.exit(1);
-  });
-} else {
-  console.log('[BOT] Running as main process (dashboard only)');
-  console.log('[BOT] To start bots, use the dashboard Start buttons.');
-  setInterval(() => {}, 60000); // Keep alive
-}
+startBot().catch(err => {
+  console.error('[BOT] Fatal error:', err);
+  process.exit(1);
+});
