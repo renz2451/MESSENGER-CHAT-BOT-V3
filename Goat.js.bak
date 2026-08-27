@@ -122,13 +122,30 @@ async function loadDatabaseModels() {
         return true;
     } catch (err) {
         console.warn(`[BOT ${BOT_ID}] ⚠️ Database models not available:`, err.message);
+        // Create fallback models that use the API
         usersData = {
-            get: async (id) => ({ money: 0, exp: 0, level: 1 }),
+            get: async (id) => {
+                try {
+                    if (global.GoatBot.fcaApi) {
+                        const info = await global.GoatBot.fcaApi.getUserInfo(id);
+                        return { money: 0, exp: 0, level: 1, name: info[id]?.name || 'User' };
+                    }
+                } catch (e) {}
+                return { money: 0, exp: 0, level: 1 };
+            },
             set: async (id, data) => data,
             getAll: async () => []
         };
         threadsData = {
-            get: async (id) => ({ members: [], adminIDs: [] }),
+            get: async (id) => {
+                try {
+                    if (global.GoatBot.fcaApi) {
+                        const info = await global.GoatBot.fcaApi.getThreadInfo(id);
+                        return { members: info.participantIDs || [], adminIDs: info.adminIDs || [] };
+                    }
+                } catch (e) {}
+                return { members: [], adminIDs: [] };
+            },
             set: async (id, data) => data,
             getAll: async () => []
         };
@@ -143,14 +160,12 @@ async function loginBot() {
 
         let fbstate = null;
 
-        // Get fbstate from environment
         if (BOT_FBSTATE) {
             try {
                 fbstate = JSON.parse(BOT_FBSTATE);
                 console.log(`[BOT ${BOT_ID}] ✅ Loaded fbstate from environment`);
             } catch (parseError) {
                 console.error(`[BOT ${BOT_ID}] ❌ Failed to parse fbstate:`, parseError.message);
-                // Try to get from Firebase directly
                 const bot = await botModel.getById(BOT_ID);
                 if (bot && bot.fbstate) {
                     try {
@@ -176,7 +191,6 @@ async function loginBot() {
 
         if (!fbstate || !Array.isArray(fbstate) || fbstate.length === 0) {
             console.error(`[BOT ${BOT_ID}] ❌ No valid fbstate found`);
-            // Mark bot as failed in Firebase
             await botModel.update(BOT_ID, { running: false, pid: null });
             process.exit(1);
         }
@@ -201,10 +215,9 @@ async function loginBot() {
             process.exit(1);
         }
 
-        // ==== Store API in global ====
+        // Store API in global
         global.GoatBot.fcaApi = api;
 
-        // ==== Get user info safely ====
         let botID;
         try {
             botID = api.getCurrentUserID();
@@ -227,19 +240,10 @@ async function loginBot() {
             console.log(`[BOT ${BOT_ID}] ✅ Logged in with ID: ${botID}`);
         }
 
-        // Mark bot as running
         await botModel.update(BOT_ID, { running: true });
-
-        // Load database models
         await loadDatabaseModels();
-
-        // Load commands
         await loadCommands(api);
-
-        // Load events
         await loadEvents(api);
-
-        // Start listening
         await startListening(api);
 
         return api;
@@ -247,13 +251,9 @@ async function loginBot() {
     } catch (err) {
         console.error(`[BOT ${BOT_ID}] ❌ Login failed:`, err.message);
         console.error(err.stack);
-        
-        // Mark bot as failed
         try {
             await botModel.update(BOT_ID, { running: false, pid: null });
         } catch (e) {}
-
-        // Retry after 10 seconds
         setTimeout(() => {
             console.log(`[BOT ${BOT_ID}] 🔄 Retrying login...`);
             loginBot();
@@ -350,8 +350,6 @@ async function startListening(api) {
         return;
     }
 
-    // ==== Ensure API is ready before starting ====
-    // Check if api has the required methods
     if (typeof api.listenMqtt !== 'function') {
         console.error(`[BOT ${BOT_ID}] ❌ API is not ready: listenMqtt is not a function`);
         setTimeout(() => {
@@ -370,14 +368,12 @@ async function startListening(api) {
                 return;
             }
 
-            // Skip if event is invalid
             if (!event) return;
 
             if (event.type === 'message') {
                 console.log(`[BOT ${BOT_ID}] 📩 Message from ${event.senderID}: ${event.body?.substring(0, 50) || '(no text)'}`);
             }
 
-            // Handle event with safe API check
             await handleEvent(api, event);
         });
 
@@ -393,13 +389,12 @@ async function startListening(api) {
 
 // ===== HANDLE EVENTS =====
 async function handleEvent(api, event) {
-    // ==== CRITICAL: Check if api is valid ====
+    // Validate API
     if (!api) {
         console.error(`[BOT ${BOT_ID}] ❌ Cannot handle event: api is null`);
         return;
     }
 
-    // Check if api has required methods
     if (typeof api.sendMessage !== 'function') {
         console.error(`[BOT ${BOT_ID}] ❌ API is not ready for handling events`);
         return;
@@ -437,11 +432,12 @@ async function handleEvent(api, event) {
             if (command) {
                 console.log(`[BOT ${BOT_ID}] 🎯 Executing command: ${commandName}`);
                 try {
+                    // Create context with proper API reference
                     const context = {
                         api: api,
                         event: event,
                         message: {
-                            reply: async (text) => {
+                            reply: async (text, attachment = null) => {
                                 if (!api) {
                                     console.error(`[BOT ${BOT_ID}] ❌ Cannot reply: api is null`);
                                     return;
@@ -450,6 +446,9 @@ async function handleEvent(api, event) {
                                     if (typeof api.sendMessage !== 'function') {
                                         console.error(`[BOT ${BOT_ID}] ❌ api.sendMessage is not a function`);
                                         return;
+                                    }
+                                    if (attachment) {
+                                        return await api.sendMessage({ body: text, attachment: attachment }, event.threadID);
                                     }
                                     return await api.sendMessage(text, event.threadID);
                                 } catch (err) {
@@ -469,7 +468,9 @@ async function handleEvent(api, event) {
                         usersData: usersData,
                         threadsData: threadsData,
                         args: args,
-                        commandName: commandName
+                        commandName: commandName,
+                        // Include global for commands that need it
+                        global: global
                     };
 
                     await command.onStart(context);
