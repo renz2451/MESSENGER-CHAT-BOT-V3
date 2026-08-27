@@ -21,7 +21,6 @@ async function startBotProcess(botId) {
       ? bot.fbstate
       : JSON.stringify(bot.fbstate);
 
-    // Spawn child process with environment variables
     const env = {
       ...process.env,
       BOT_ID: botId,

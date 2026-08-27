@@ -1,15 +1,14 @@
 /**
  * @author R3nz75
- * RENZ MESSENGER BOT V3 - Bot Process
- * This file is a copy of the original login.js, but uses Firebase for fbstate.
- * It runs as a child process for each bot.
+ * RENZ MESSENGER BOT V3 – Bot Process
+ * This file runs as a child process for each bot.
+ * It uses the same logic as the original login.js but retrieves fbstate from environment / Firebase.
  */
 
 const fs = require("fs-extra");
 const path = require("path");
 const { promisify } = require("util");
 const readdir = promisify(fs.readdir);
-const readFile = promisify(fs.readFile);
 const stat = promisify(fs.stat);
 
 // ===== CHECK IF CHILD PROCESS =====
@@ -21,9 +20,15 @@ const BOT_FBSTATE = process.env.BOT_FBSTATE || null;
 if (!IS_CHILD_PROCESS) {
   console.log('[BOT] Running as main process (dashboard only). Waiting for bot starts.');
   setInterval(() => {}, 60000); // Keep alive
-  process.exit(0); // Actually we don't want to exit, just keep alive
-  // Let's just keep the process alive without exiting.
-  // Use a simple interval.
+  // We don't exit; the main process should keep running.
+  // But we need to avoid exiting. This will keep it alive.
+  // Actually, since we are in a child process, we should not reach here if IS_CHILD_PROCESS is false.
+  // However, if it's the main process (index.js running Goat.js directly), we should just keep alive.
+  // To avoid conflict with the dashboard, we'll just keep alive.
+  // We'll let the process run indefinitely.
+  // This code will run only if someone runs Goat.js directly without BOT_ID.
+  // But index.js starts the dashboard, not Goat.js directly.
+  // So we can leave this.
 }
 
 console.log(`[BOT] Starting bot ${BOT_ID} (owner: ${BOT_OWNER})`);
@@ -55,41 +60,60 @@ global.log = utils.log;
 // ===== LOAD FIREBASE HELPER =====
 const { botModel } = require('./dashboard/firebase.js');
 
-// ===== GET FBSTATE =====
+// ===== GET FBSTATE – Robust parsing =====
 async function getFbstate() {
   let fbstate = null;
+
   // 1. Try environment variable (from botManager)
   if (BOT_FBSTATE) {
     try {
-      fbstate = JSON.parse(BOT_FBSTATE);
-      console.log(`[BOT] Loaded fbstate from environment`);
-      return fbstate;
+      // If it's a string, parse it; if it's already an array, use it directly.
+      if (typeof BOT_FBSTATE === 'string') {
+        fbstate = JSON.parse(BOT_FBSTATE);
+      } else {
+        fbstate = BOT_FBSTATE;
+      }
+      if (Array.isArray(fbstate) && fbstate.length > 0) {
+        console.log(`[BOT] Loaded fbstate from environment (${fbstate.length} items)`);
+        return fbstate;
+      }
     } catch (e) {
       console.warn(`[BOT] Failed to parse BOT_FBSTATE:`, e.message);
+      // If parsing fails, maybe it's not JSON – try to use it as raw array (unlikely)
     }
   }
-  // 2. Try Firebase
+
+  // 2. Fallback: fetch from Firebase directly
   if (BOT_ID) {
-    const bot = await botModel.getById(BOT_ID);
-    if (bot && bot.fbstate) {
-      try {
-        fbstate = JSON.parse(bot.fbstate);
-        console.log(`[BOT] Loaded fbstate from Firebase`);
-        return fbstate;
-      } catch (e) {
-        console.error(`[BOT] Invalid fbstate in Firebase`);
+    try {
+      const bot = await botModel.getById(BOT_ID);
+      if (bot && bot.fbstate) {
+        let raw = bot.fbstate;
+        if (typeof raw === 'string') {
+          fbstate = JSON.parse(raw);
+        } else {
+          fbstate = raw;
+        }
+        if (Array.isArray(fbstate) && fbstate.length > 0) {
+          console.log(`[BOT] Loaded fbstate from Firebase (${fbstate.length} items)`);
+          return fbstate;
+        }
       }
+    } catch (e) {
+      console.error(`[BOT] Failed to load fbstate from Firebase:`, e.message);
     }
   }
+
+  console.error('[BOT] No valid fbstate found');
   return null;
 }
 
-// ===== START BOT (copied from original login.js) =====
+// ===== START BOT =====
 async function startBot() {
   try {
     const fbstate = await getFbstate();
     if (!fbstate || !Array.isArray(fbstate) || fbstate.length === 0) {
-      console.error('[BOT] No valid fbstate found');
+      console.error('[BOT] No valid fbstate found – exiting.');
       process.exit(1);
     }
 
@@ -139,13 +163,13 @@ async function startBot() {
     global.db = db;
     const { threadsData, usersData, dashBoardData, globalData } = db;
 
-    // ===== LOAD COMMANDS (original logic) =====
+    // ===== LOAD COMMANDS =====
     await loadCommands(api, threadsData, usersData, dashBoardData, globalData);
 
-    // ===== LOAD EVENTS (original logic) =====
+    // ===== LOAD EVENTS =====
     await loadEvents(api, threadsData, usersData, dashBoardData, globalData);
 
-    // ===== START LISTENING (original logic) =====
+    // ===== START LISTENING =====
     await startListening(api, threadsData, usersData, dashBoardData, globalData);
 
   } catch (err) {
@@ -304,7 +328,14 @@ process.on('SIGINT', () => {
   process.exit(0);
 });
 
-startBot().catch(err => {
-  console.error('[BOT] Fatal error:', err);
-  process.exit(1);
-});
+// If child process, start the bot; otherwise keep alive for dashboard
+if (IS_CHILD_PROCESS && BOT_ID) {
+  startBot().catch(err => {
+    console.error('[BOT] Fatal error:', err);
+    process.exit(1);
+  });
+} else {
+  // If this file is run directly without BOT_ID (main process), just keep alive
+  console.log('[BOT] Running in main mode – waiting for bot starts.');
+  setInterval(() => {}, 60000);
+}
