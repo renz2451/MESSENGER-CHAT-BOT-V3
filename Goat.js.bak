@@ -1,14 +1,14 @@
 /**
  * @author R3nz75
  * RENZ MESSENGER BOT V3 – Bot Process
- * This file runs as a child process for each bot.
- * It uses the same logic as the original login.js but retrieves fbstate from environment / Firebase.
+ * This file is a direct copy of the original login.js, but uses Firebase for fbstate.
  */
 
 const fs = require("fs-extra");
 const path = require("path");
 const { promisify } = require("util");
 const readdir = promisify(fs.readdir);
+const readFile = promisify(fs.readFile);
 const stat = promisify(fs.stat);
 
 // ===== CHECK IF CHILD PROCESS =====
@@ -19,16 +19,7 @@ const BOT_FBSTATE = process.env.BOT_FBSTATE || null;
 
 if (!IS_CHILD_PROCESS) {
   console.log('[BOT] Running as main process (dashboard only). Waiting for bot starts.');
-  setInterval(() => {}, 60000); // Keep alive
-  // We don't exit; the main process should keep running.
-  // But we need to avoid exiting. This will keep it alive.
-  // Actually, since we are in a child process, we should not reach here if IS_CHILD_PROCESS is false.
-  // However, if it's the main process (index.js running Goat.js directly), we should just keep alive.
-  // To avoid conflict with the dashboard, we'll just keep alive.
-  // We'll let the process run indefinitely.
-  // This code will run only if someone runs Goat.js directly without BOT_ID.
-  // But index.js starts the dashboard, not Goat.js directly.
-  // So we can leave this.
+  setInterval(() => {}, 60000);
 }
 
 console.log(`[BOT] Starting bot ${BOT_ID} (owner: ${BOT_OWNER})`);
@@ -63,11 +54,9 @@ const { botModel } = require('./dashboard/firebase.js');
 // ===== GET FBSTATE – Robust parsing =====
 async function getFbstate() {
   let fbstate = null;
-
   // 1. Try environment variable (from botManager)
   if (BOT_FBSTATE) {
     try {
-      // If it's a string, parse it; if it's already an array, use it directly.
       if (typeof BOT_FBSTATE === 'string') {
         fbstate = JSON.parse(BOT_FBSTATE);
       } else {
@@ -79,10 +68,8 @@ async function getFbstate() {
       }
     } catch (e) {
       console.warn(`[BOT] Failed to parse BOT_FBSTATE:`, e.message);
-      // If parsing fails, maybe it's not JSON – try to use it as raw array (unlikely)
     }
   }
-
   // 2. Fallback: fetch from Firebase directly
   if (BOT_ID) {
     try {
@@ -103,12 +90,11 @@ async function getFbstate() {
       console.error(`[BOT] Failed to load fbstate from Firebase:`, e.message);
     }
   }
-
   console.error('[BOT] No valid fbstate found');
   return null;
 }
 
-// ===== START BOT =====
+// ===== THE ORIGINAL START BOT LOGIC (unchanged) =====
 async function startBot() {
   try {
     const fbstate = await getFbstate();
@@ -159,23 +145,22 @@ async function startBot() {
     // ===== LOAD DATABASE (exactly like original loadData.js) =====
     console.log('[BOT] Loading database...');
     const dbController = require('./database/controller/index.js');
-    const db = await dbController(api);  // passes api to controller
+    const db = await dbController(api);
     global.db = db;
     const { threadsData, usersData, dashBoardData, globalData } = db;
 
-    // ===== LOAD COMMANDS =====
+    // ===== LOAD COMMANDS (original logic) =====
     await loadCommands(api, threadsData, usersData, dashBoardData, globalData);
 
-    // ===== LOAD EVENTS =====
+    // ===== LOAD EVENTS (original logic) =====
     await loadEvents(api, threadsData, usersData, dashBoardData, globalData);
 
-    // ===== START LISTENING =====
+    // ===== START LISTENING (original logic) =====
     await startListening(api, threadsData, usersData, dashBoardData, globalData);
 
   } catch (err) {
     console.error('[BOT] ❌ Login failed:', err.message);
     console.error(err.stack);
-    // Retry after 10 seconds
     setTimeout(() => {
       console.log('[BOT] 🔄 Retrying login...');
       startBot();
@@ -335,7 +320,6 @@ if (IS_CHILD_PROCESS && BOT_ID) {
     process.exit(1);
   });
 } else {
-  // If this file is run directly without BOT_ID (main process), just keep alive
   console.log('[BOT] Running in main mode – waiting for bot starts.');
   setInterval(() => {}, 60000);
 }

@@ -15,6 +15,8 @@ async function startBotProcess(botId) {
     }
 
     // ===== FIX: Do not double‑stringify =====
+    // If bot.fbstate is already a string (JSON), use it directly.
+    // Otherwise, stringify it.
     const fbstate = typeof bot.fbstate === 'string'
       ? bot.fbstate
       : JSON.stringify(bot.fbstate);
@@ -23,7 +25,7 @@ async function startBotProcess(botId) {
       ...process.env,
       BOT_ID: botId,
       BOT_OWNER: bot.ownerFbid,
-      BOT_FBSTATE: fbstate,
+      BOT_FBSTATE: fbstate,          // <-- Pass the string directly
       IS_CHILD_PROCESS: 'true'
     };
 

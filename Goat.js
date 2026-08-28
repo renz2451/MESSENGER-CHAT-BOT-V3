@@ -1,14 +1,14 @@
 /**
  * @author R3nz75
  * RENZ MESSENGER BOT V3 – Bot Process
- * This file is a direct copy of the original login.js, but uses Firebase for fbstate.
+ * This file runs as a child process for each bot.
+ * Uses the same logic as the original login.js but retrieves fbstate from environment / Firebase.
  */
 
 const fs = require("fs-extra");
 const path = require("path");
 const { promisify } = require("util");
 const readdir = promisify(fs.readdir);
-const readFile = promisify(fs.readFile);
 const stat = promisify(fs.stat);
 
 // ===== CHECK IF CHILD PROCESS =====
@@ -20,6 +20,7 @@ const BOT_FBSTATE = process.env.BOT_FBSTATE || null;
 if (!IS_CHILD_PROCESS) {
   console.log('[BOT] Running as main process (dashboard only). Waiting for bot starts.');
   setInterval(() => {}, 60000);
+  // We don't exit; the main process should keep running.
 }
 
 console.log(`[BOT] Starting bot ${BOT_ID} (owner: ${BOT_OWNER})`);
@@ -54,6 +55,7 @@ const { botModel } = require('./dashboard/firebase.js');
 // ===== GET FBSTATE – Robust parsing =====
 async function getFbstate() {
   let fbstate = null;
+
   // 1. Try environment variable (from botManager)
   if (BOT_FBSTATE) {
     try {
@@ -70,6 +72,7 @@ async function getFbstate() {
       console.warn(`[BOT] Failed to parse BOT_FBSTATE:`, e.message);
     }
   }
+
   // 2. Fallback: fetch from Firebase directly
   if (BOT_ID) {
     try {
@@ -90,11 +93,12 @@ async function getFbstate() {
       console.error(`[BOT] Failed to load fbstate from Firebase:`, e.message);
     }
   }
+
   console.error('[BOT] No valid fbstate found');
   return null;
 }
 
-// ===== THE ORIGINAL START BOT LOGIC (unchanged) =====
+// ===== START BOT =====
 async function startBot() {
   try {
     const fbstate = await getFbstate();
@@ -145,22 +149,23 @@ async function startBot() {
     // ===== LOAD DATABASE (exactly like original loadData.js) =====
     console.log('[BOT] Loading database...');
     const dbController = require('./database/controller/index.js');
-    const db = await dbController(api);
+    const db = await dbController(api);  // passes api to controller
     global.db = db;
     const { threadsData, usersData, dashBoardData, globalData } = db;
 
-    // ===== LOAD COMMANDS (original logic) =====
+    // ===== LOAD COMMANDS =====
     await loadCommands(api, threadsData, usersData, dashBoardData, globalData);
 
-    // ===== LOAD EVENTS (original logic) =====
+    // ===== LOAD EVENTS =====
     await loadEvents(api, threadsData, usersData, dashBoardData, globalData);
 
-    // ===== START LISTENING (original logic) =====
+    // ===== START LISTENING =====
     await startListening(api, threadsData, usersData, dashBoardData, globalData);
 
   } catch (err) {
     console.error('[BOT] ❌ Login failed:', err.message);
     console.error(err.stack);
+    // Retry after 10 seconds
     setTimeout(() => {
       console.log('[BOT] 🔄 Retrying login...');
       startBot();
@@ -320,6 +325,7 @@ if (IS_CHILD_PROCESS && BOT_ID) {
     process.exit(1);
   });
 } else {
+  // If this file is run directly without BOT_ID (main process), just keep alive
   console.log('[BOT] Running in main mode – waiting for bot starts.');
   setInterval(() => {}, 60000);
 }
