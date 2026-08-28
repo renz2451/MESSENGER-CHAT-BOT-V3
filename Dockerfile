@@ -1,4 +1,4 @@
-FROM node:20
+FROM node:18-bullseye
 
 # Install system dependencies for canvas and other native modules
 RUN apt-get update && apt-get install -y \
@@ -19,11 +19,11 @@ RUN npm install --production
 # Copy the rest of the app
 COPY . .
 
-# Set environment variable for Node memory
+# Set environment variable for Node memory (optional)
 ENV NODE_OPTIONS="--max-old-space-size=512"
 
 # Expose the port your app listens on
 EXPOSE 5000
 
-# Start the dashboard (which will then spawn bots)
+# Start the bot
 CMD ["npm", "start"]

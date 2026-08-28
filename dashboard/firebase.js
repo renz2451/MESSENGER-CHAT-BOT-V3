@@ -16,50 +16,18 @@ try {
       console.log('[FIREBASE] ✅ Initialized successfully.');
     }
   } else {
-    console.warn('[FIREBASE] ⚠️ FIREBASE_SERVICE_ACCOUNT env var not set.');
+    console.warn('[FIREBASE] ⚠️ FIREBASE_SERVICE_ACCOUNT env var not set. Bot management will not work.');
   }
 } catch (err) {
   console.error('[FIREBASE] ❌ Initialization error:', err.message);
 }
 
-// ---- User Model ----
-const userModel = {
-  create: async (fbid, password) => {
-    if (!firebaseInitialized) throw new Error('Firebase not initialized.');
-    const ref = db.ref('users').child(fbid);
-    await ref.set({
-      password: password,
-      createdAt: Date.now(),
-      fbid: fbid
-    });
-    return { fbid };
-  },
-  get: async (fbid) => {
-    if (!firebaseInitialized) return null;
-    const snapshot = await db.ref('users').child(fbid).once('value');
-    const user = snapshot.val();
-    if (!user) return null;
-    return { ...user, fbid };
-  },
-  exists: async (fbid) => {
-    if (!firebaseInitialized) return false;
-    const snapshot = await db.ref('users').child(fbid).once('value');
-    return snapshot.exists();
-  }
-};
-
-// ---- Bot Model ----
+// ---- Bot Model (safe fallback) ----
 const botModel = {
   create: async (data) => {
     if (!firebaseInitialized) throw new Error('Firebase not initialized.');
     const ref = db.ref('bots').push();
-    await ref.set({ 
-      ...data, 
-      createdAt: Date.now(), 
-      active: data.active || false,
-      running: false,
-      pid: null
-    });
+    await ref.set({ ...data, createdAt: Date.now(), active: data.active || false });
     return { id: ref.key, ...data };
   },
   getAll: async (ownerFbid = null) => {
@@ -77,11 +45,6 @@ const botModel = {
     if (!bot) return null;
     return { id, ...bot };
   },
-  getRunning: async () => {
-    if (!firebaseInitialized) return [];
-    const allBots = await botModel.getAll();
-    return allBots.filter(b => b.running === true);
-  },
   update: async (id, data) => {
     if (!firebaseInitialized) throw new Error('Firebase not initialized.');
     await db.ref(`bots/${id}`).update(data);
@@ -94,7 +57,7 @@ const botModel = {
   }
 };
 
-// ---- Admin config ----
+// ---- Admin config (safe fallback) ----
 const getAdminConfig = async () => {
   if (!firebaseInitialized) {
     return { adminKey: null, trustedAdminIDs: [] };
@@ -112,4 +75,4 @@ const setAdminConfig = async (data) => {
   await db.ref('adminConfig').update(data);
 };
 
-module.exports = { botModel, userModel, getAdminConfig, setAdminConfig };
+module.exports = { botModel, getAdminConfig, setAdminConfig };

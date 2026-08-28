@@ -1,331 +1,265 @@
 /**
- * @author R3nz75
- * RENZ MESSENGER BOT V3 – Bot Process
- * This file runs as a child process for each bot.
- * Uses the same logic as the original login.js but retrieves fbstate from environment / Firebase.
+ * @author NTKhang
+ * ! The source code is written by NTKhang, please don't change the author's name everywhere. Thank you for using
+ * ! Official source code: https://github.com/ntkhang03/Goat-Bot-V2
+ * ! If you do not download the source code from the above address, you are using an unknown version and at risk of having your account hacked
  */
 
+process.on('unhandledRejection', error => console.log(error));
+process.on('uncaughtException', error => console.log(error));
+
+const axios = require("axios");
 const fs = require("fs-extra");
+const google = require("googleapis").google;
+const nodemailer = require("nodemailer");
+const { execSync } = require('child_process');
+const log = require('./logger/log.js');
 const path = require("path");
-const { promisify } = require("util");
-const readdir = promisify(fs.readdir);
-const stat = promisify(fs.stat);
 
-// ===== CHECK IF CHILD PROCESS =====
-const IS_CHILD_PROCESS = process.env.IS_CHILD_PROCESS === 'true' && process.env.BOT_ID;
-const BOT_ID = process.env.BOT_ID || null;
-const BOT_OWNER = process.env.BOT_OWNER || null;
-const BOT_FBSTATE = process.env.BOT_FBSTATE || null;
+process.env.BLUEBIRD_W_FORGOTTEN_RETURN = 0; 
 
-if (!IS_CHILD_PROCESS) {
-  console.log('[BOT] Running as main process (dashboard only). Waiting for bot starts.');
-  setInterval(() => {}, 60000);
-  // We don't exit; the main process should keep running.
+function validJSON(pathDir) {
+	try {
+		if (!fs.existsSync(pathDir))
+			throw new Error(`File "${pathDir}" not found`);
+		execSync(`npx jsonlint "${pathDir}"`, { stdio: 'pipe' });
+		return true;
+	}
+	catch (err) {
+		let msgError = err.message;
+		msgError = msgError.split("\n").slice(1).join("\n");
+		const indexPos = msgError.indexOf("    at");
+		msgError = msgError.slice(0, indexPos != -1 ? indexPos - 1 : msgError.length);
+		throw new Error(msgError);
+	}
 }
 
-console.log(`[BOT] Starting bot ${BOT_ID} (owner: ${BOT_OWNER})`);
+// Fixed to always use standard file names regardless of NODE_ENV
+const dirConfig = path.normalize(`${__dirname}/config.json`);
+const dirConfigCommands = path.normalize(`${__dirname}/configCommands.json`);
+const dirAccount = path.normalize(`${__dirname}/account.txt`);
 
-// ===== LOAD CONFIG =====
-const configPath = path.join(__dirname, process.env.NODE_ENV === 'development' ? 'config.dev.json' : 'config.json');
-const config = require(configPath);
+for (const pathDir of [dirConfig, dirConfigCommands]) {
+	try {
+		validJSON(pathDir);
+	}
+	catch (err) {
+		log.error("CONFIG", `Invalid JSON file "${pathDir.replace(__dirname, "")}":\n${err.message.split("\n").map(line => `  ${line}`).join("\n")}\nPlease fix it and restart bot`);
+		process.exit(0);
+	}
+}
 
-// ===== SETUP GLOBAL (exactly as original) =====
+const config = require(dirConfig);
+if (config.whiteListMode?.whiteListIds && Array.isArray(config.whiteListMode.whiteListIds))
+	config.whiteListMode.whiteListIds = config.whiteListMode.whiteListIds.map(id => id.toString());
+const configCommands = require(dirConfigCommands);
+
 global.GoatBot = {
-  config: config,
-  configCommands: require(path.join(__dirname, process.env.NODE_ENV === 'development' ? 'configCommands.dev.json' : 'configCommands.json')),
-  commands: new Map(),
-  eventCommands: new Map(),
-  aliases: new Map(),
-  fcaApi: null,
-  botID: null,
-  botName: config.nameBot || "RENZ BOT",
-  prefix: config.prefix || "$",
-  language: config.language || "en",
-  startTime: Date.now()
+	startTime: Date.now() - process.uptime() * 1000, 
+	commands: new Map(), 
+	eventCommands: new Map(), 
+	commandFilesPath: [], 
+	eventCommandsFilesPath: [], 
+	aliases: new Map(), 
+	onFirstChat: [], 
+	onChat: [], 
+	onEvent: [], 
+	onReply: new Map(), 
+	onReaction: new Map(), 
+	onAnyEvent: [], 
+	config, 
+	configCommands, 
+	envCommands: {}, 
+	envEvents: {}, 
+	envGlobal: {}, 
+	reLoginBot: function () { }, 
+	Listening: null, 
+	oldListening: [], 
+	callbackListenTime: {}, 
+	storage5Message: [], 
+	fcaApi: null, 
+	botID: null 
 };
 
-// ===== LOAD UTILITIES =====
+global.db = {
+	allThreadData: [],
+	allUserData: [],
+	allDashBoardData: [],
+	allGlobalData: [],
+	threadModel: null,
+	userModel: null,
+	dashboardModel: null,
+	globalModel: null,
+	threadsData: null,
+	usersData: null,
+	dashBoardData: null,
+	globalData: null,
+	receivedTheFirstMessage: {}
+};
+
+global.client = {
+	dirConfig,
+	dirConfigCommands,
+	dirAccount,
+	countDown: {},
+	cache: {},
+	database: {
+		creatingThreadData: [],
+		creatingUserData: [],
+		creatingDashBoardData: [],
+		creatingGlobalData: []
+	},
+	commandBanned: configCommands.commandBanned
+};
+
 const utils = require("./utils.js");
 global.utils = utils;
-global.log = utils.log;
+const { colors } = utils;
 
-// ===== LOAD FIREBASE HELPER =====
-const { botModel } = require('./dashboard/firebase.js');
+global.temp = {
+	createThreadData: [],
+	createUserData: [],
+	createThreadDataError: [], 
+	filesOfGoogleDrive: {
+		arraybuffer: {},
+		stream: {},
+		fileNames: {}
+	},
+	contentScripts: {
+		cmds: {},
+		events: {}
+	}
+};
 
-// ===== GET FBSTATE – Robust parsing =====
-async function getFbstate() {
-  let fbstate = null;
+const watchAndReloadConfig = (dir, type, prop, logName) => {
+	let lastModified = fs.statSync(dir).mtimeMs;
+	let isFirstModified = true;
 
-  // 1. Try environment variable (from botManager)
-  if (BOT_FBSTATE) {
-    try {
-      if (typeof BOT_FBSTATE === 'string') {
-        fbstate = JSON.parse(BOT_FBSTATE);
-      } else {
-        fbstate = BOT_FBSTATE;
-      }
-      if (Array.isArray(fbstate) && fbstate.length > 0) {
-        console.log(`[BOT] Loaded fbstate from environment (${fbstate.length} items)`);
-        return fbstate;
-      }
-    } catch (e) {
-      console.warn(`[BOT] Failed to parse BOT_FBSTATE:`, e.message);
-    }
-  }
+	fs.watch(dir, (eventType) => {
+		if (eventType === type) {
+			const oldConfig = global.GoatBot[prop];
+			setTimeout(() => {
+				try {
+					if (isFirstModified) {
+						isFirstModified = false;
+						return;
+					}
+					if (lastModified === fs.statSync(dir).mtimeMs) {
+						return;
+					}
+					global.GoatBot[prop] = JSON.parse(fs.readFileSync(dir, 'utf-8'));
+					log.success(logName, `Reloaded ${dir.replace(process.cwd(), "")}`);
+				}
+				catch (err) {
+					log.warn(logName, `Can't reload ${dir.replace(process.cwd(), "")}`);
+					global.GoatBot[prop] = oldConfig;
+				}
+				finally {
+					lastModified = fs.statSync(dir).mtimeMs;
+				}
+			}, 200);
+		}
+	});
+};
 
-  // 2. Fallback: fetch from Firebase directly
-  if (BOT_ID) {
-    try {
-      const bot = await botModel.getById(BOT_ID);
-      if (bot && bot.fbstate) {
-        let raw = bot.fbstate;
-        if (typeof raw === 'string') {
-          fbstate = JSON.parse(raw);
-        } else {
-          fbstate = raw;
-        }
-        if (Array.isArray(fbstate) && fbstate.length > 0) {
-          console.log(`[BOT] Loaded fbstate from Firebase (${fbstate.length} items)`);
-          return fbstate;
-        }
-      }
-    } catch (e) {
-      console.error(`[BOT] Failed to load fbstate from Firebase:`, e.message);
-    }
-  }
+watchAndReloadConfig(dirConfigCommands, 'change', 'configCommands', 'CONFIG COMMANDS');
+watchAndReloadConfig(dirConfig, 'change', 'config', 'CONFIG');
 
-  console.error('[BOT] No valid fbstate found');
-  return null;
+global.GoatBot.envGlobal = global.GoatBot.configCommands.envGlobal;
+global.GoatBot.envCommands = global.GoatBot.configCommands.envCommands;
+global.GoatBot.envEvents = global.GoatBot.configCommands.envEvents;
+
+const getText = global.utils.getText;
+
+if (config.autoRestart) {
+	const time = config.autoRestart.time;
+	if (!isNaN(time) && time > 0) {
+		utils.log.info("AUTO RESTART", getText("Goat", "autoRestart1", utils.convertTime(time, true)));
+		setTimeout(() => {
+			utils.log.info("AUTO RESTART", "Restarting...");
+			process.exit(2);
+		}, time);
+	}
+	else if (typeof time == "string" && time.match(/^((((\d+,)+\d+|(\d+(\/|-|#)\d+)|\d+L?|\*(\/\d+)?|L(-\d+)?|\?|[A-Z]{3}(-[A-Z]{3})?) ?){5,7})$/gmi)) {
+		utils.log.info("AUTO RESTART", getText("Goat", "autoRestart2", time));
+		const cron = require("node-cron");
+		cron.schedule(time, () => {
+			utils.log.info("AUTO RESTART", "Restarting...");
+			process.exit(2);
+		});
+	}
 }
 
-// ===== START BOT =====
-async function startBot() {
-  try {
-    const fbstate = await getFbstate();
-    if (!fbstate || !Array.isArray(fbstate) || fbstate.length === 0) {
-      console.error('[BOT] No valid fbstate found – exiting.');
-      process.exit(1);
-    }
+(async () => {
+	const { gmailAccount } = config.credentials;
+	const { email, clientId, clientSecret, refreshToken } = gmailAccount;
+	const OAuth2 = google.auth.OAuth2;
+	const OAuth2_client = new OAuth2(clientId, clientSecret);
+	OAuth2_client.setCredentials({ refresh_token: refreshToken });
+	let accessToken;
+	try {
+		accessToken = await OAuth2_client.getAccessToken();
+	}
+	catch (err) {
+		throw new Error(getText("Goat", "googleApiTokenExpired"));
+	}
+	
+	const transporter = nodemailer.createTransport({
+		host: 'smtp.gmail.com',
+		service: 'Gmail',
+		auth: {
+			type: 'OAuth2',
+			user: email,
+			clientId,
+			clientSecret,
+			refreshToken,
+			accessToken
+		}
+	});
 
-    console.log(`[BOT] ✅ fbstate validated (${fbstate.length} items)`);
-    console.log('[BOT] Logging in...');
+	async function sendMail({ to, subject, text, html, attachments }) {
+		const mailOptions = {
+			from: email,
+			to,
+			subject,
+			text,
+			html,
+			attachments
+		};
+		const info = await transporter.sendMail(mailOptions);
+		return info;
+	}
 
-    const { login } = require("fcanew-r3nz75");
-    const api = await login({
-      appState: fbstate,
-      logLevel: 'error',
-      forceLogin: true,
-      listenEvents: true,
-      updatePresence: true,
-      listenTyping: true,
-      autoMarkDelivery: true,
-      autoReconnect: true
-    });
+	global.utils.sendMail = sendMail;
+	global.utils.transporter = transporter;
 
-    global.GoatBot.fcaApi = api;
+	const { data: { version } } = await axios.get("https://raw.githubusercontent.com/ntkhang03/Goat-Bot-V2/main/package.json");
+	const currentVersion = require("./package.json").version;
+	if (compareVersion(version, currentVersion) === 1)
+		utils.log.master("NEW VERSION", getText(
+			"Goat",
+			"newVersionDetected",
+			colors.gray(currentVersion),
+			colors.hex("#eb6a07", version),
+			colors.hex("#eb6a07", "node update")
+		));
 
-    // Get user info (exactly as original)
-    try {
-      const userId = api.getCurrentUserID();
-      const botInfo = await api.getUserInfo(userId);
-      if (botInfo && botInfo[userId]) {
-        global.GoatBot.botID = userId;
-        global.GoatBot.botName = botInfo[userId].name || config.nameBot || "RENZ BOT";
-        console.log(`[BOT] ✅ Logged in as: ${global.GoatBot.botName} (${global.GoatBot.botID})`);
-      } else {
-        global.GoatBot.botID = userId;
-        console.log(`[BOT] ✅ Logged in with ID: ${global.GoatBot.botID}`);
-      }
-    } catch (err) {
-      global.GoatBot.botID = api.getCurrentUserID();
-      console.log(`[BOT] ✅ Logged in with ID: ${global.GoatBot.botID}`);
-    }
+	const parentIdGoogleDrive = await utils.drive.checkAndCreateParentFolder("GoatBot");
+	utils.drive.parentID = parentIdGoogleDrive;
 
-    // Mark bot as running in Firebase
-    if (BOT_ID) {
-      await botModel.update(BOT_ID, { running: true });
-    }
+	// Always require the standard login.js
+	require(`./bot/login/login.js`);
+})();
 
-    // ===== LOAD DATABASE (exactly like original loadData.js) =====
-    console.log('[BOT] Loading database...');
-    const dbController = require('./database/controller/index.js');
-    const db = await dbController(api);  // passes api to controller
-    global.db = db;
-    const { threadsData, usersData, dashBoardData, globalData } = db;
-
-    // ===== LOAD COMMANDS =====
-    await loadCommands(api, threadsData, usersData, dashBoardData, globalData);
-
-    // ===== LOAD EVENTS =====
-    await loadEvents(api, threadsData, usersData, dashBoardData, globalData);
-
-    // ===== START LISTENING =====
-    await startListening(api, threadsData, usersData, dashBoardData, globalData);
-
-  } catch (err) {
-    console.error('[BOT] ❌ Login failed:', err.message);
-    console.error(err.stack);
-    // Retry after 10 seconds
-    setTimeout(() => {
-      console.log('[BOT] 🔄 Retrying login...');
-      startBot();
-    }, 10000);
-  }
-}
-
-// ===== LOAD COMMANDS =====
-async function loadCommands(api, threadsData, usersData, dashBoardData, globalData) {
-  const commandsPath = path.join(__dirname, 'scripts', 'cmds');
-  if (!fs.existsSync(commandsPath)) {
-    console.log('[BOT] No commands folder found');
-    return;
-  }
-
-  const commandFolders = await readdir(commandsPath);
-  for (const folder of commandFolders) {
-    const folderPath = path.join(commandsPath, folder);
-    const statInfo = await stat(folderPath);
-    if (!statInfo.isDirectory()) continue;
-
-    const commandFiles = await readdir(folderPath);
-    for (const file of commandFiles) {
-      if (!file.endsWith('.js')) continue;
-      try {
-        const command = require(path.join(folderPath, file));
-        if (command.config && command.config.name) {
-          global.GoatBot.commands.set(command.config.name, command);
-          if (command.config.aliases) {
-            for (const alias of command.config.aliases) {
-              global.GoatBot.aliases.set(alias, command.config.name);
-            }
-          }
-          console.log(`[BOT] Loaded command: ${command.config.name}`);
-        }
-      } catch (err) {
-        console.error(`[BOT] Failed to load command ${file}:`, err.message);
-      }
-    }
-  }
-  console.log(`[BOT] Loaded ${global.GoatBot.commands.size} commands`);
-}
-
-// ===== LOAD EVENTS =====
-async function loadEvents(api, threadsData, usersData, dashBoardData, globalData) {
-  const eventsPath = path.join(__dirname, 'scripts', 'events');
-  if (!fs.existsSync(eventsPath)) {
-    console.log('[BOT] No events folder found');
-    return;
-  }
-
-  const eventFiles = await readdir(eventsPath);
-  for (const file of eventFiles) {
-    if (!file.endsWith('.js')) continue;
-    try {
-      const event = require(path.join(eventsPath, file));
-      if (event.config && event.config.name) {
-        global.GoatBot.eventCommands.set(event.config.name, event);
-        console.log(`[BOT] Loaded event: ${event.config.name}`);
-      }
-    } catch (err) {
-      console.error(`[BOT] Failed to load event ${file}:`, err.message);
-    }
-  }
-  console.log(`[BOT] Loaded ${global.GoatBot.eventCommands.size} events`);
-}
-
-// ===== START LISTENING =====
-async function startListening(api, threadsData, usersData, dashBoardData, globalData) {
-  api.listenMqtt(async (err, event) => {
-    if (err) {
-      console.error('[BOT] MQTT Error:', err.message);
-      return;
-    }
-    await handleEvent(api, event, threadsData, usersData, dashBoardData, globalData);
-  });
-  console.log('[BOT] ✅ Listening for messages...');
-}
-
-// ===== HANDLE EVENTS =====
-async function handleEvent(api, event, threadsData, usersData, dashBoardData, globalData) {
-  try {
-    // Process event commands
-    for (const [name, eventCmd] of global.GoatBot.eventCommands) {
-      try {
-        if (eventCmd.onEvent) {
-          await eventCmd.onEvent({ api, event, ...eventCmd.config });
-        }
-      } catch (err) {
-        console.error(`[BOT] Event command ${name} error:`, err.message);
-      }
-    }
-
-    // Process message commands
-    if (event.type === 'message' && event.body) {
-      const prefix = global.GoatBot.prefix;
-      if (!event.body.startsWith(prefix)) return;
-
-      const args = event.body.slice(prefix.length).trim().split(/\s+/);
-      const commandName = args.shift().toLowerCase();
-
-      const command = global.GoatBot.commands.get(commandName) || 
-                      global.GoatBot.commands.get(global.GoatBot.aliases.get(commandName));
-
-      if (command) {
-        try {
-          const context = {
-            api,
-            event,
-            message: {
-              reply: async (text) => {
-                return api.sendMessage(text, event.threadID);
-              },
-              react: async (emoji) => {
-                return api.setMessageReaction(emoji, event.messageID, event.threadID);
-              }
-            },
-            usersData,
-            threadsData,
-            dashBoardData,
-            globalData,
-            args,
-            commandName
-          };
-          await command.onStart(context);
-        } catch (err) {
-          console.error(`[BOT] Command ${commandName} error:`, err.message);
-          api.sendMessage(`⚠️ Error: ${err.message}`, event.threadID);
-        }
-      }
-    }
-  } catch (err) {
-    console.error('[BOT] Event handler error:', err.message);
-  }
-}
-
-// ===== START =====
-console.log('[BOT] Starting RENZ MESSENGER BOT V3...');
-console.log(`[BOT] Using Node.js ${process.version}`);
-
-process.on('SIGTERM', () => {
-  console.log('[BOT] Received SIGTERM, shutting down...');
-  if (BOT_ID) botModel.update(BOT_ID, { running: false, pid: null }).catch(() => {});
-  process.exit(0);
-});
-
-process.on('SIGINT', () => {
-  console.log('[BOT] Received SIGINT, shutting down...');
-  if (BOT_ID) botModel.update(BOT_ID, { running: false, pid: null }).catch(() => {});
-  process.exit(0);
-});
-
-// If child process, start the bot; otherwise keep alive for dashboard
-if (IS_CHILD_PROCESS && BOT_ID) {
-  startBot().catch(err => {
-    console.error('[BOT] Fatal error:', err);
-    process.exit(1);
-  });
-} else {
-  // If this file is run directly without BOT_ID (main process), just keep alive
-  console.log('[BOT] Running in main mode – waiting for bot starts.');
-  setInterval(() => {}, 60000);
-}
+function compareVersion(version1, version2) {
+	const v1 = version1.split(".");
+	const v2 = version2.split(".");
+	for (let i = 0; i < 3; i++) {
+		if (parseInt(v1[i]) > parseInt(v2[i]))
+			return 1; 
+		if (parseInt(v1[i]) < parseInt(v2[i]))
+			return -1; 
+	}
+	return 0; 
+	}
+			
