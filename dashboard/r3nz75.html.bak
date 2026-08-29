@@ -127,6 +127,7 @@
     .rv.in { opacity: 1; transform: translateY(0); }
     @media(max-width:768px) { nav { padding: 10px 16px; margin-bottom:36px; top:10px; } .hero { padding:24px 0 48px; } .hero h1 { font-size: clamp(32px, 10vw, 52px); } .feat-grid { grid-template-columns:1fr; } .sc-body, .sc-head { padding:18px; } .stats-row { grid-template-columns:repeat(2,1fr); } .status-bar { gap:10px; } }
 
+    /* Bot Management extras */
     .bot-item { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; padding: 14px 18px; background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.06); border-radius: 14px; margin-bottom: 10px; transition: .2s; }
     .bot-item:hover { border-color: var(--p); background: rgba(124,58,237,.06); }
     .bot-item.active { border-color: var(--g); background: rgba(16,185,129,.08); }
@@ -153,10 +154,9 @@
     .create-bot-form .row button { padding: 10px 24px; background: linear-gradient(135deg, var(--p), #5b21b6); color: #fff; border: none; border-radius: 12px; font-weight: 700; cursor: pointer; transition: .2s; display: flex; align-items: center; gap: 8px; }
     .create-bot-form .row button:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(124,58,237,.4); }
     .create-bot-form textarea { min-height: 80px; }
-    .bot-status-badge { font-size: 11px; padding: 2px 12px; border-radius: 100px; font-weight: 700; }
-    .bot-status-badge.running { background: rgba(6,182,212,.15); color: var(--c); border: 1px solid rgba(6,182,212,.25); }
-    .bot-status-badge.active { background: rgba(16,185,129,.15); color: var(--g); border: 1px solid rgba(16,185,129,.25); }
-    .bot-status-badge.inactive { background: rgba(100,116,139,.15); color: var(--muted); border: 1px solid rgba(100,116,139,.2); }
+    .bot-status-badge { font-size: 11px; padding: 2px 12px; border-radius: 100px; font-weight: 700; background: rgba(16,185,129,.15); color: var(--g); border: 1px solid rgba(16,185,129,.25); }
+    .bot-status-badge.inactive { background: rgba(100,116,139,.15); color: var(--muted); border-color: rgba(100,116,139,.2); }
+    .bot-status-badge.running { background: rgba(6,182,212,.15); color: var(--c); border-color: rgba(6,182,212,.25); }
     #adminPanel { margin-top: 20px; border-top: 1px solid var(--border); padding-top: 20px; }
     #adminPanel h3 { font-size: 16px; font-weight: 800; margin-bottom: 12px; color: var(--p2); }
     #adminList div { display: flex; justify-content: space-between; padding: 8px 12px; border-bottom: 1px solid var(--border); font-size: 14px; }
@@ -176,6 +176,7 @@
   <div id="stars"></div>
 
   <div class="wrap">
+    <!-- NAV -->
     <nav class="rv">
       <div class="nav-brand" id="brandName">RENZ MESSENGER BOT</div>
       <div style="display:flex;align-items:center;gap:12px;">
@@ -187,6 +188,7 @@
       </div>
     </nav>
 
+    <!-- HERO -->
     <section class="hero rv">
       <div class="hero-avatar"><i class="fi fi-sr-robot"></i><div class="avatar-status" id="avatarStatus"></div></div>
       <h1 id="heroTitle">RENZ MESSENGER BOT</h1>
@@ -197,6 +199,7 @@
       </div>
     </section>
 
+    <!-- SESSION CARD -->
     <div class="sec-label rv"><i class="fi fi-rr-key"></i> Facebook Session</div>
     <div class="session-card rv">
       <div class="sc-head">
@@ -222,6 +225,7 @@
       </div>
     </div>
 
+    <!-- ===== BOT MANAGEMENT CARD ===== -->
     <div class="sec-label rv"><i class="fi fi-rr-database"></i> Bot Management</div>
     <div class="session-card rv">
       <div class="sc-head">
@@ -232,6 +236,7 @@
         </div>
       </div>
       <div class="sc-body">
+        <!-- Create Bot Form -->
         <div class="create-bot-form">
           <div class="row">
             <input type="text" id="newAdminId" class="field-inp" placeholder="Admin ID (required)" required />
@@ -240,9 +245,11 @@
           </div>
           <textarea id="newBotFbstate" class="field-inp" placeholder='Paste fbstate JSON here for this bot...'></textarea>
         </div>
+        <!-- Bot List -->
         <div id="botList"><p>Loading your bots...</p></div>
         <div id="botMsg" class="sc-msg" style="display:none;"></div>
 
+        <!-- ===== ADMIN PANEL (only visible to Super Admin) ===== -->
         <div id="adminPanel" style="display:none; margin-top:20px; border-top:1px solid var(--border); padding-top:20px;">
           <h3>👑 Manage Admins</h3>
           <div style="display:flex; gap:10px; margin-bottom:10px;">
@@ -254,6 +261,7 @@
       </div>
     </div>
 
+    <!-- LIVE STATS -->
     <div class="sec-label rv"><i class="fi fi-rr-chart-line"></i> Live Stats</div>
     <div class="stats-row rv">
       <div class="stat-box"><span class="stat-ico"><i class="fi fi-rr-comment-dots"></i></span><div class="stat-val" id="sGroups"><span class="sk"></span></div><div class="stat-lbl">Groups</div></div>
@@ -262,6 +270,7 @@
       <div class="stat-box"><span class="stat-ico"><i class="fi fi-rr-clock"></i></span><div class="stat-val" id="sUp"><span class="sk"></span></div><div class="stat-lbl">Uptime</div></div>
     </div>
 
+    <!-- INFO BAR -->
     <div class="sec-label rv"><i class="fi fi-rr-info"></i> System Info</div>
     <div class="status-bar rv">
       <div class="sb-item"><span class="sb-key">Prefix</span><span class="sb-val" id="iPrefix"><span class="sk" style="min-width:16px"></span></span></div>
@@ -274,6 +283,7 @@
       <div class="sb-item"><span class="sb-key">Status</span><span class="sb-val" id="iStatus"><span class="sk"></span></span></div>
     </div>
 
+    <!-- INFO PILLS -->
     <div class="info-grid rv">
       <div class="info-pill"><div class="pill-dot"></div><div><span class="pill-key">Prefix</span><span class="pill-val" id="pPrefix">—</span></div></div>
       <div class="info-pill"><div class="pill-dot" style="background:var(--c);box-shadow:0 0 8px var(--c)"></div><div><span class="pill-key">Bot Version</span><span class="pill-val" id="pVer">—</span></div></div>
@@ -283,6 +293,7 @@
       <div class="info-pill"><div class="pill-dot" style="background:var(--c);box-shadow:0 0 8px var(--c)"></div><div><span class="pill-key">FCA Version</span><span class="pill-val" id="pFCA">—</span></div></div>
     </div>
 
+    <!-- FEATURES -->
     <div class="sec-label rv"><i class="fi fi-rr-star"></i> Features</div>
     <div class="feat-grid">
       <div class="feat-card rv"><span class="feat-emo"><i class="fi fi-rr-brain"></i></span><h3>AI & GPT Suite</h3><p>ChatGPT, Midjourney, image generation, translation — pure intelligence in any Messenger chat.</p></div>
@@ -293,6 +304,7 @@
       <div class="feat-card rv"><span class="feat-emo"><i class="fi fi-rr-engine"></i></span><h3>Custom FCA Engine</h3><p>Patched fca-r3nz75: stable MQTT listener, reconnect logic, full message parsing.</p></div>
     </div>
 
+    <!-- FOOTER -->
     <footer class="rv">
       <div>Made by <a href="https://github.com/ncazad" target="_blank">r3nz75</a> &nbsp;·&nbsp; Based on <a href="https://github.com/renz2451/MESSENGER-CHAT-BOT-V3" target="_blank">RENZ MESSENGER BOT</a></div>
       <div style="font-size:12px;color:#334155;margin-top:6px">© 2026 RENZ MESSENGER BOT — All rights reserved</div>
@@ -300,6 +312,7 @@
   </div>
 
   <script>
+    // ===== PARTICLES & STARS =====
     (function() {
       const pc = document.getElementById('particles');
       const colors = ['#7c3aed', '#a855f7', '#06b6d4', '#ec4899', '#10b981', '#f59e0b', '#818cf8'];
@@ -320,11 +333,13 @@
       }
     })();
 
+    // ===== REVEAL =====
     const rv = new IntersectionObserver(entries => {
       entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('in') });
     }, { threshold: .07, rootMargin: '0px 0px -30px 0px' });
     document.querySelectorAll('.rv').forEach(el => rv.observe(el));
 
+    // ===== HELPERS =====
     function fmtUp(s) {
       if (!s && s !== 0) return '—';
       const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
@@ -354,6 +369,7 @@
       }
     }
 
+    // ===== LOGOUT =====
     async function logoutUser() {
       try {
         const res = await fetch('/api/auth/logout');
@@ -366,6 +382,7 @@
       }
     }
 
+    // ===== LOAD STATS =====
     async function loadStats() {
       try {
         const r = await fetch('/stats');
@@ -397,6 +414,7 @@
     loadStats();
     setInterval(loadStats, 30000);
 
+    // ===== SESSION SUBMIT =====
     async function sendSession() {
       const key = document.getElementById('keyInp').value.trim();
       const state = document.getElementById('stateInp').value.trim();
@@ -443,6 +461,10 @@
       m.style.display = 'block';
     }
 
+    // ============================================================
+    // ===== BOT MANAGEMENT =====
+    // ============================================================
+
     async function loadBots() {
       const list = document.getElementById('botList');
       try {
@@ -457,14 +479,11 @@
         bots.forEach(bot => {
           const activeClass = bot.active ? 'active' : '';
           const runningClass = bot.running ? 'running' : '';
-          let statusBadge = '';
-          if (bot.running) {
-            statusBadge = '<span class="bot-status-badge running">▶ Running</span>';
-          } else if (bot.active) {
-            statusBadge = '<span class="bot-status-badge active">● Active</span>';
-          } else {
-            statusBadge = '<span class="bot-status-badge inactive">○ Inactive</span>';
-          }
+          const statusBadge = bot.running 
+            ? '<span class="bot-status-badge running">▶ Running</span>' 
+            : bot.active 
+              ? '<span class="bot-status-badge">● Active</span>' 
+              : '<span class="bot-status-badge inactive">○ Inactive</span>';
           html += `
             <div class="bot-item ${activeClass} ${runningClass}">
               <div class="bot-info">
@@ -491,6 +510,7 @@
       }
     }
 
+    // ===== CREATE BOT =====
     async function createBot() {
       const adminId = document.getElementById('newAdminId').value.trim();
       const name = document.getElementById('newBotName').value.trim();
@@ -538,6 +558,7 @@
       btn.innerHTML = '<i class="fi fi-rr-plus"></i> Create Bot';
     }
 
+    // ===== START BOT =====
     async function startBot(id) {
       const msg = document.getElementById('botMsg');
       msg.style.display = 'none';
@@ -555,6 +576,7 @@
       }
     }
 
+    // ===== STOP BOT =====
     async function stopBot(id) {
       const msg = document.getElementById('botMsg');
       msg.style.display = 'none';
@@ -572,16 +594,17 @@
       }
     }
 
+    // ===== ACTIVATE BOT =====
     async function activateBot(id) {
-      if (!confirm('Activating this bot will set it as active.')) return;
+      if (!confirm('Activating this bot will switch the active session and restart the service. Continue?')) return;
       const msg = document.getElementById('botMsg');
       msg.style.display = 'none';
       try {
         const res = await fetch(`/api/bots/${id}/activate`, { method: 'POST' });
         const data = await res.json();
         if (data.success) {
-          showBotMsg('ok', '✅ Bot activated!');
-          loadBots();
+          showBotMsg('ok', '✅ Bot activated! The service will restart shortly.');
+          setTimeout(() => location.reload(), 3000);
         } else {
           showBotMsg('err', '❌ ' + (data.error || 'Activation failed'));
         }
@@ -590,6 +613,7 @@
       }
     }
 
+    // ===== DELETE BOT =====
     async function deleteBot(id) {
       if (!confirm('Delete this bot permanently? This cannot be undone.')) return;
       const msg = document.getElementById('botMsg');
@@ -616,6 +640,7 @@
       if (type === 'ok') { setTimeout(() => { msg.style.display = 'none'; }, 5000); }
     }
 
+    // ===== ADMIN MANAGEMENT =====
     async function loadAdmins() {
       try {
         const res = await fetch('/api/admins');
@@ -678,12 +703,14 @@
       } catch (e) {}
     }
 
+    // ===== HELPERS =====
     function escapeHtml(text) {
       if (!text) return '';
       const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
       return text.replace(/[&<>"']/g, function(m) { return map[m]; });
     }
 
+    // ===== INIT =====
     checkAdminStatus();
     loadAdmins();
     loadBots();

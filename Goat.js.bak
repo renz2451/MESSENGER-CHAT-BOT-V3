@@ -6,10 +6,31 @@
 
 const fs = require("fs-extra");
 const path = require("path");
+const { spawn } = require("child_process");
 const { promisify } = require("util");
 const readdir = promisify(fs.readdir);
 const readFile = promisify(fs.readFile);
 const stat = promisify(fs.stat);
+
+// ===== DETERMINE WHICH ACCOUNT FILE TO USE =====
+// If running as a child process for a specific bot, use that bot's file
+let accountFile = process.env.BOT_ACCOUNT_FILE || "account.txt";
+
+// If using a specific bot ID, also set the file path
+if (process.env.BOT_ID) {
+  const botId = process.env.BOT_ID;
+  const customFile = `account_${botId}.txt`;
+  // Check if the file exists, if not create it from the parent's fbstate
+  if (!fs.existsSync(path.join(process.cwd(), customFile))) {
+    // If we have the fbstate in environment, write it
+    if (process.env.BOT_FBSTATE) {
+      fs.writeFileSync(path.join(process.cwd(), customFile), process.env.BOT_FBSTATE);
+    }
+  }
+  accountFile = customFile;
+}
+
+console.log(`[BOT] Using account file: ${accountFile}`);
 
 // ===== LOAD CONFIG =====
 const configPath = path.join(__dirname, process.env.NODE_ENV === 'development' ? 'config.dev.json' : 'config.json');
@@ -38,62 +59,39 @@ global.log = utils.log;
 // ===== SETUP DATABASE =====
 const db = require("./database/controller/index.js");
 
-// ===== LOAD FIREBASE =====
-const { botModel, userModel } = require('./dashboard/firebase.js');
-
-// ===== BOT ID FROM ENVIRONMENT =====
-const BOT_ID = process.env.BOT_ID || null;
-const BOT_OWNER = process.env.BOT_OWNER || null;
-const BOT_FBSTATE = process.env.BOT_FBSTATE || null;
-const IS_CHILD_PROCESS = !!process.env.BOT_ID;
-
-console.log(`[BOT] Starting bot${BOT_ID ? ` ${BOT_ID}` : ''} (${IS_CHILD_PROCESS ? 'child process' : 'main process'})`);
-
 // ===== LOGIN FUNCTION =====
 async function loginBot() {
   try {
     const { login } = require("fcanew-r3nz75");
     
-    let fbstate = null;
-
-    // If we're a child process with a specific bot ID, get fbstate from Firebase
-    if (IS_CHILD_PROCESS && BOT_ID) {
-      console.log(`[BOT] Loading fbstate from Firebase for bot ${BOT_ID}`);
-      const bot = await botModel.getById(BOT_ID);
-      if (!bot) {
-        console.error(`[BOT] Bot ${BOT_ID} not found in Firebase`);
-        process.exit(1);
-      }
-      fbstate = bot.fbstate;
-      console.log(`[BOT] Loaded fbstate from Firebase for bot ${BOT_ID}`);
-    } else {
-      // For main process (dashboard), we don't log in as a bot
-      console.log('[BOT] Main process - not logging in as bot');
-      return null;
-    }
-
-    if (!fbstate) {
-      console.error('[BOT] No fbstate found in Firebase');
-      process.exit(1);
-    }
-
-    // Parse fbstate if it's a string
-    if (typeof fbstate === 'string') {
+    // Read fbstate from the determined account file
+    const fbstatePath = path.join(__dirname, accountFile);
+    let fbstate = [];
+    
+    if (fs.existsSync(fbstatePath)) {
       try {
-        fbstate = JSON.parse(fbstate);
-      } catch (e) {
-        console.error('[BOT] Invalid fbstate format');
-        process.exit(1);
+        const content = fs.readFileSync(fbstatePath, 'utf8');
+        fbstate = JSON.parse(content);
+        if (!Array.isArray(fbstate)) {
+          throw new Error('Invalid fbstate format');
+        }
+        console.log(`[BOT] Loaded fbstate from ${accountFile}`);
+      } catch (err) {
+        console.error(`[BOT] Failed to load fbstate: ${err.message}`);
+        // Try to load from config as fallback
+        if (config.facebookAccount && config.facebookAccount.fbstate) {
+          fbstate = config.facebookAccount.fbstate;
+        }
       }
-    }
-
-    if (!Array.isArray(fbstate)) {
-      console.error('[BOT] Invalid fbstate format - must be an array');
+    } else if (config.facebookAccount && config.facebookAccount.fbstate) {
+      fbstate = config.facebookAccount.fbstate;
+      console.log('[BOT] Using fbstate from config.json');
+    } else {
+      console.error('[BOT] No fbstate found! Please provide a valid session.');
       process.exit(1);
     }
 
     // Login with fbstate
-    console.log('[BOT] Logging in...');
     const api = await login({ 
       appState: fbstate,
       logLevel: 'error',
@@ -107,24 +105,12 @@ async function loginBot() {
 
     global.GoatBot.fcaApi = api;
 
-    // Get bot info - using the correct method for this FCA version
-    try {
-      // Try to get user info from the API
-      const botInfo = await api.getUserInfo(api.getCurrentUserID());
-      const userId = api.getCurrentUserID();
-      if (botInfo && botInfo[userId]) {
-        global.GoatBot.botID = userId;
-        global.GoatBot.botName = botInfo[userId].name || config.nameBot || "RENZ BOT";
-        console.log(`[BOT] Logged in as: ${global.GoatBot.botName} (${global.GoatBot.botID})`);
-      } else {
-        global.GoatBot.botID = api.getCurrentUserID();
-        console.log(`[BOT] Logged in as: ${global.GoatBot.botID}`);
-      }
-    } catch (err) {
-      // Fallback to getCurrentUserID
-      global.GoatBot.botID = api.getCurrentUserID();
-      console.log(`[BOT] Logged in with ID: ${global.GoatBot.botID}`);
-    }
+    // Get bot info
+    const botInfo = await api.getCurrentUser();
+    global.GoatBot.botID = botInfo.id;
+    global.GoatBot.botName = botInfo.name || config.nameBot || "RENZ BOT";
+
+    console.log(`[BOT] Logged in as: ${botInfo.name} (${botInfo.id})`);
 
     // ===== LOAD COMMANDS =====
     await loadCommands(api);
@@ -132,14 +118,8 @@ async function loginBot() {
     // ===== START LISTENING =====
     await startListening(api);
 
-    return api;
-
   } catch (err) {
     console.error('[BOT] Login failed:', err.message);
-    if (!IS_CHILD_PROCESS) {
-      console.log('[BOT] Main process continuing without bot login...');
-      return null;
-    }
     setTimeout(() => {
       console.log('[BOT] Retrying login...');
       loginBot();
@@ -150,11 +130,6 @@ async function loginBot() {
 // ===== LOAD COMMANDS =====
 async function loadCommands(api) {
   const commandsPath = path.join(__dirname, 'commands');
-  if (!fs.existsSync(commandsPath)) {
-    console.log('[BOT] No commands folder found');
-    return;
-  }
-
   const commandFolders = await readdir(commandsPath);
 
   for (const folder of commandFolders) {
@@ -249,6 +224,7 @@ async function handleEvent(api, event) {
 
       if (command) {
         try {
+          // Create context object for the command
           const context = {
             api,
             event,
@@ -293,18 +269,8 @@ process.on('SIGINT', () => {
   process.exit(0);
 });
 
-// If this is a child process (bot), start the bot
-if (IS_CHILD_PROCESS && BOT_ID) {
-  console.log(`[BOT] Starting as bot ${BOT_ID} (owner: ${BOT_OWNER})`);
-  loginBot().catch(err => {
-    console.error('[BOT] Fatal error:', err);
-    process.exit(1);
-  });
-} else {
-  // Main process - just keep alive for dashboard
-  console.log('[BOT] Running as main process (dashboard only)');
-  console.log('[BOT] To start bots, use the dashboard Start buttons.');
-  
-  // Keep the process alive
-  setInterval(() => {}, 60000);
-}
+// Start the bot
+loginBot().catch(err => {
+  console.error('[BOT] Fatal error:', err);
+  process.exit(1);
+});
